@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ county }} Scorecard</title>
+    <style>
+        table { border-collapse: collapse; }
+        th, td { border: 1px solid #999; padding: 8px 12px; text-align: left; }
+        .status-green { background: #4caf50; color: #fff; }
+        .status-amber { background: #ff9800; color: #fff; }
+        .status-red { background: #f44336; color: #fff; }
+        .badge { font-size: 0.8em; padding: 2px 6px; border-radius: 4px; background: #ddd; }
+        .badge-unverified { background: #f44336; color: #fff; }
+        .badge-provisional { background: #ff9800; color: #fff; }
+        .badge-verified { background: #4caf50; color: #fff; }
+    </style>
+</head>
+<body>
+    <p><a href="{% url 'dashboard' %}">&larr; Back to dashboard</a></p>
+    <h1>{{ county }} Scorecard{% if quarter %} &mdash; {{ quarter }} {{ year }}{% endif %}</h1>
+
+    {% if rows %}
+        <p><em>Citizen perception is shown alongside the official score, not blended into it &mdash; neither source alone determines the indicator.</em></p>
+        <table>
+            <tr>
+                <th>Sector</th>
+                <th>Value</th>
+                <th>Target</th>
+                <th>Score</th>
+                <th>Status</th>
+                <th>Data source</th>
+                <th>Citizen Perception</th>
+            </tr>
+            {% for row in rows %}
+                <tr>
+                    <td>{{ row.sector }}</td>
+                    <td>{{ row.value }}</td>
+                    <td>{{ row.target }}</td>
+                    <td>{{ row.score|floatformat:2 }}</td>
+                    <td class="status-{{ row.status }}">{{ row.status }}</td>
+                    <td>
+                        {% if row.data_source %}
+                            {{ row.data_source.label }}
+                            <span class="badge badge-{{ row.data_source.trust_tier }}">{{ row.data_source.trust_tier }}</span>
+                            {% if row.data_source.origin_url %}
+                                &mdash; <a href="{{ row.data_source.origin_url }}">source</a>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge badge-unverified">no source recorded</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if row.perception %}
+                            <span class="status-{{ row.perception.status }}">{{ row.perception.average_rating|floatformat:1 }} / 5</span>
+                            (n={{ row.perception.count }})
+                            {% if row.perception.recent_comments %}
+                                <details>
+                                    <summary>Recent comments</summary>
+                                    <ul>
+                                        {% for comment in row.perception.recent_comments %}
+                                            <li>&ldquo;{{ comment.comment }}&rdquo; &mdash; {{ comment.name }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </details>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge">no citizen feedback yet</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </table>
+    {% else %}
+        <p>No scorecard data available for {{ county }} in this period.</p>
+    {% endif %}
+</body>
+</html>

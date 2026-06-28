@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 class Sector(models.Model):
@@ -24,7 +25,36 @@ class DashboardLink(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.type})"
-from django.db import models
+
+
+class DataSource(models.Model):
+    SOURCE_TYPE_CHOICES = [
+        ("api", "API"),
+        ("csv_upload", "CSV Upload"),
+        ("manual_entry", "Manual Entry"),
+        ("scrape", "Scrape"),
+        ("citizen_survey", "Citizen Survey"),
+    ]
+    TRUST_TIER_CHOICES = [
+        ("verified", "Verified"),
+        ("provisional", "Provisional"),
+        ("unverified", "Unverified"),
+    ]
+
+    label = models.CharField(max_length=200)
+    source_type = models.CharField(max_length=20, choices=SOURCE_TYPE_CHOICES)
+    trust_tier = models.CharField(max_length=20, choices=TRUST_TIER_CHOICES)
+    origin_url = models.URLField(blank=True)
+    file = models.FileField(upload_to="data_uploads/", blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
+    )
+    imported_at = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"{self.label} ({self.source_type}, {self.trust_tier})"
+
 
 class CountyScore(models.Model):
     county = models.CharField(max_length=100)
@@ -35,12 +65,9 @@ class CountyScore(models.Model):
     status = models.CharField(max_length=10)  # green, amber, red
     quarter = models.CharField(max_length=10)
     year = models.IntegerField()
+    data_source = models.ForeignKey(
+        DataSource, null=True, blank=True, on_delete=models.SET_NULL, related_name="county_scores"
+    )
 
     class Meta:
         unique_together = ("county", "sector", "quarter", "year")
-
-class CitizenFeedback(models.Model):
-    county = models.CharField(max_length=100)
-    sector = models.CharField(max_length=100)
-    rating = models.IntegerField()  # 1-5
-    submitted_at = models.DateTimeField(auto_now_add=True)

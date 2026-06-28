@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>KPPAS County Scorecard</title>
+    <style>
+        table { border-collapse: collapse; }
+        th, td { border: 1px solid #999; padding: 8px 12px; text-align: center; }
+        .status-green { background: #4caf50; color: #fff; }
+        .status-amber { background: #ff9800; color: #fff; }
+        .status-red { background: #f44336; color: #fff; }
+        .status-empty { background: #eee; color: #999; }
+        a { color: inherit; text-decoration: none; display: block; }
+    </style>
+</head>
+<body>
+    <h1>KPPAS County Scorecard</h1>
+
+    {% if periods %}
+        <form method="get">
+            <label>Period:
+                <select name="period_select" onchange="
+                    var parts = this.value.split('|');
+                    window.location.search = '?year=' + parts[0] + '&quarter=' + parts[1];
+                ">
+                {% for p_year, p_quarter in periods %}
+                    <option value="{{ p_year }}|{{ p_quarter }}" {% if p_year == year and p_quarter == quarter %}selected{% endif %}>
+                        {{ p_quarter }} {{ p_year }}
+                    </option>
+                {% endfor %}
+                </select>
+            </label>
+        </form>
+        <p>Showing: {{ quarter }} {{ year }}</p>
+    {% else %}
+        <p>No scorecard data available yet.</p>
+    {% endif %}
+
+    {% if grid %}
+        <table>
+            <tr>
+                <th>County</th>
+                {% for sector in sectors %}<th>{{ sector }}</th>{% endfor %}
+            </tr>
+            {% for row in grid %}
+                <tr>
+                    <th>{{ row.county }}</th>
+                    {% for cell in row.cells %}
+                        {% if cell %}
+                            <td class="status-{{ cell.status }}">
+                                <a href="{% url 'county_detail' row.county %}?year={{ year }}&quarter={{ quarter }}">
+                                    {{ cell.score|floatformat:2 }}
+                                </a>
+                            </td>
+                        {% else %}
+                            <td class="status-empty">&mdash;</td>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </table>
+    {% endif %}
+</body>
+</html>

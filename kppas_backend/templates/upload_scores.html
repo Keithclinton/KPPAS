@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload County Scores</title>
+</head>
+<body>
+    <h2>Upload County Scores (CSV)</h2>
+    <p>CSV must have columns: <code>county,value,target</code>. One upload covers one sector + quarter + year.</p>
+    {% if results %}
+        <p><b>Created: {{ results.created }}, Updated: {{ results.updated }}</b></p>
+        {% if results.errors %}
+            <ul>
+            {% for error in results.errors %}
+                <li>{{ error }}</li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+    {% endif %}
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <input type="submit" value="Upload">
+    </form>
+</body>
+</html>
