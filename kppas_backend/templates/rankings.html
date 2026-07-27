@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}County Rankings &middot; KPPAS{% endblock %}
+
+{% block extra_style %}
+  .period-form { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; font-size: 0.9rem; }
+  .period-form select { font: inherit; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); color: var(--ink); }
+  td.rank-cell { font-weight: 700; color: var(--ink-muted); width: 40px; }
+{% endblock %}
+
+{% block content %}
+  <h1>County Rankings</h1>
+  <p class="subtitle">Counties ranked by average score across all reported sectors this period &mdash; mirroring Rwanda's district Imihigo ranking.</p>
+
+  <div class="card">
+    {% if periods %}
+      <form method="get" class="period-form">
+        <label for="period_select">Period</label>
+        <select id="period_select" name="period_select" onchange="
+            var parts = this.value.split('|');
+            window.location.search = '?year=' + parts[0] + '&quarter=' + parts[1];
+        ">
+        {% for p_year, p_quarter in periods %}
+            <option value="{{ p_year }}|{{ p_quarter }}" {% if p_year == year and p_quarter == quarter %}selected{% endif %}>
+                {{ p_quarter }} {{ p_year }}
+            </option>
+        {% endfor %}
+        </select>
+      </form>
+    {% endif %}
+
+    {% if rankings %}
+      <div class="table-scroll">
+        <table>
+            <tr>
+                <th>Rank</th>
+                <th>County</th>
+                <th>Average score</th>
+                <th>Sectors reported</th>
+            </tr>
+            {% for row in rankings %}
+                <tr>
+                    <td class="rank-cell">{{ row.rank }}</td>
+                    <td><a href="{% url 'county_detail' row.county %}?year={{ year }}&quarter={{ quarter }}">{{ row.county }}</a></td>
+                    <td>{{ row.average_score|floatformat:2 }}</td>
+                    <td>{{ row.sector_count }}</td>
+                </tr>
+            {% endfor %}
+        </table>
+      </div>
+    {% else %}
+      <p>No scorecard data available for this period.</p>
+    {% endif %}
+  </div>
+{% endblock %}

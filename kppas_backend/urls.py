@@ -17,14 +17,20 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path
-from .views import feedback_view, upload_scores_view, dashboard_view, county_detail_view
-from .api import health_data_api
+from .views import (
+    feedback_view, upload_scores_view, dashboard_view, county_detail_view,
+    rankings_view, ussd_feedback_view,
+)
+from .api import health_data_api, open_data_api
 
 urlpatterns = [
     path('', dashboard_view, name='dashboard'),
+    path('rankings/', rankings_view, name='rankings'),
     path('county/<str:county>/', county_detail_view, name='county_detail'),
     path('admin/', admin.site.urls),
     path('feedback/', feedback_view, name='feedback'),
     path('data/upload/', upload_scores_view, name='upload_scores'),
     path('api/health/', health_data_api, name='health_data_api'),
+    path('api/open-data/', open_data_api, name='open_data_api'),
+    path('ussd/feedback/', ussd_feedback_view, name='ussd_feedback'),
 ]

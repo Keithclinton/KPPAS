@@ -1,15 +1,21 @@
 import csv
 import io
 
+from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.db import transaction
 from django.db.models import Avg, Count
+from django.http import HttpResponse
 from django.shortcuts import render, redirect
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 from .forms import PublicFeedbackForm, CountyScoreUploadForm
-from .models.public_feedback import PublicFeedback
-from .models.scorecard_models import CountyScore, DataSource
+from .models.public_feedback import PublicFeedback, SECTOR_CHOICES
+from .models.scorecard_models import CountyScore, DataSource, RemediationAction, PILOT_COUNTIES
 from .scoring import compute_score_and_status, compute_perception_status
+
+USSD_SECTORS = [choice for choice, _ in SECTOR_CHOICES if choice != 'General']
 
 
 def feedback_view(request):
@@ -48,7 +54,7 @@ def _process_score_upload(form, user):
     reader = csv.DictReader(decoded)
     fieldnames = {(name or '').strip().lower(): name for name in (reader.fieldnames or [])}
 
-    created, updated, errors = 0, 0, []
+    created, updated, errors, locked_notes = 0, 0, [], []
 
     with transaction.atomic():
         data_source = DataSource.objects.create(
@@ -79,6 +85,16 @@ def _process_score_upload(form, user):
                     errors.append(f'Row {row_number} ({county}): value/target must be numeric.')
                     continue
 
+                existing = CountyScore.objects.filter(
+                    county=county, sector=sector, quarter=quarter, year=year
+                ).first()
+                if existing and existing.is_signed:
+                    target = existing.target
+                    locked_notes.append(
+                        f'Row {row_number} ({county}): target is locked (signed '
+                        f'{existing.signed_at:%Y-%m-%d}) -- kept at {target}, only value updated.'
+                    )
+
                 score, status = compute_score_and_status(value, target)
                 _, was_created = CountyScore.objects.update_or_create(
                     county=county,
@@ -98,7 +114,7 @@ def _process_score_upload(form, user):
                 else:
                     updated += 1
 
-    return {'created': created, 'updated': updated, 'errors': errors}
+    return {'created': created, 'updated': updated, 'errors': errors, 'locked_notes': locked_notes}
 
 
 def _get_available_periods():
@@ -137,6 +153,10 @@ def dashboard_view(request):
     counties = sorted({s.county for s in scores})
     sectors = sorted({s.sector for s in scores})
     by_county_sector = {(s.county, s.sector): s for s in scores}
+    perception_map = _get_perception_map(counties, sectors)
+
+    for cell in by_county_sector.values():
+        cell.perception = perception_map.get((cell.county, cell.sector))
 
     grid = [
         {
@@ -149,6 +169,38 @@ def dashboard_view(request):
     return render(request, 'dashboard.html', {
         'sectors': sectors,
         'grid': grid,
+        'periods': periods,
+        'year': year,
+        'quarter': quarter,
+    })
+
+
+def rankings_view(request):
+    periods = _get_available_periods()
+    year, quarter = _resolve_period(request, periods)
+
+    county_scores = {}
+    if year is not None:
+        for s in CountyScore.objects.filter(year=year, quarter=quarter):
+            county_scores.setdefault(s.county, []).append(s.score)
+
+    rankings = sorted(
+        (
+            {
+                'county': county,
+                'average_score': sum(scores) / len(scores),
+                'sector_count': len(scores),
+            }
+            for county, scores in county_scores.items()
+        ),
+        key=lambda r: r['average_score'],
+        reverse=True,
+    )
+    for position, row in enumerate(rankings, start=1):
+        row['rank'] = position
+
+    return render(request, 'rankings.html', {
+        'rankings': rankings,
         'periods': periods,
         'year': year,
         'quarter': quarter,
@@ -169,6 +221,9 @@ def county_detail_view(request, county):
 
     for row in rows:
         row.perception = _get_perception(county, row.sector)
+        row.remediation_actions = (
+            list(row.actions.order_by('deadline')) if row.status == 'red' else []
+        )
 
     return render(request, 'county_detail.html', {
         'county': county,
@@ -177,6 +232,24 @@ def county_detail_view(request, county):
         'year': year,
         'quarter': quarter,
     })
+
+
+def _get_perception_map(counties, sectors):
+    if not counties or not sectors:
+        return {}
+    rows = (
+        PublicFeedback.objects.filter(county__in=counties, sector__in=sectors)
+        .values('county', 'sector')
+        .annotate(average_rating=Avg('rating'), count=Count('id'))
+    )
+    return {
+        (row['county'], row['sector']): {
+            'average_rating': row['average_rating'],
+            'count': row['count'],
+            'status': compute_perception_status(row['average_rating']),
+        }
+        for row in rows
+    }
 
 
 def _get_perception(county, sector):
@@ -190,3 +263,83 @@ def _get_perception(county, sector):
         'status': compute_perception_status(aggregate['average_rating']),
         'recent_comments': list(feedback.order_by('-submitted_at')[:3]),
     }
+
+
+def _ussd_pick(options, raw_choice):
+    try:
+        index = int(raw_choice) - 1
+    except (TypeError, ValueError):
+        return None
+    return options[index] if 0 <= index < len(options) else None
+
+
+def _ussd_pick_rating(raw_choice):
+    try:
+        value = int(raw_choice)
+    except (TypeError, ValueError):
+        return None
+    return value if 1 <= value <= 5 else None
+
+
+@csrf_exempt
+@require_POST
+def ussd_feedback_view(request):
+    """
+    Africa's Talking-shaped USSD webhook (SMS/USSD channel for citizens without
+    internet access, per the KPPAS community-level feedback design).
+
+    Stateless by design: Africa's Talking resends the full accumulated `text`
+    (each step separated by '*') on every request, so the current step is
+    derived from how many steps have been answered -- no session store needed.
+    Point your USSD gateway's callback URL here once you have an account;
+    set USSD_SHARED_SECRET in settings and require ?secret=... to lock it down.
+    """
+    shared_secret = getattr(settings, 'USSD_SHARED_SECRET', None)
+    if shared_secret and request.GET.get('secret') != shared_secret:
+        return HttpResponse('Forbidden', status=403)
+
+    phone_number = request.POST.get('phoneNumber', '').strip()
+    text = request.POST.get('text', '')
+    steps = text.split('*') if text else []
+
+    def respond(prefix, message):
+        return HttpResponse(f'{prefix} {message}', content_type='text/plain')
+
+    if len(steps) == 0:
+        menu = '\n'.join(f'{i + 1}. {c}' for i, c in enumerate(PILOT_COUNTIES))
+        return respond('CON', f'Welcome to KPPAS.\nWhich county?\n{menu}')
+
+    county = _ussd_pick(PILOT_COUNTIES, steps[0])
+    if county is None:
+        return respond('END', 'Invalid county selection. Please dial in again.')
+
+    if len(steps) == 1:
+        menu = '\n'.join(f'{i + 1}. {s}' for i, s in enumerate(USSD_SECTORS))
+        return respond('CON', f'Which sector?\n{menu}')
+
+    sector = _ussd_pick(USSD_SECTORS, steps[1])
+    if sector is None:
+        return respond('END', 'Invalid sector selection. Please dial in again.')
+
+    if len(steps) == 2:
+        return respond('CON', 'Rate this service from 1 (worst) to 5 (best):')
+
+    rating = _ussd_pick_rating(steps[2])
+    if rating is None:
+        return respond('END', 'Invalid rating. Please dial in again.')
+
+    if len(steps) == 3:
+        return respond('CON', 'Optional: reply with a short comment, or 0 to skip.')
+
+    comment = steps[3].strip()
+    if comment == '0':
+        comment = ''
+
+    PublicFeedback.objects.create(
+        name=f'USSD {phone_number}'.strip() if phone_number else 'USSD caller',
+        county=county,
+        sector=sector,
+        rating=rating,
+        comment=comment or 'No comment provided.',
+    )
+    return respond('END', 'Thank you. Your feedback has been recorded.')

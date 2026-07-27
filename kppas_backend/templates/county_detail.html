@@ -1,25 +1,20 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>{{ county }} Scorecard</title>
-    <style>
-        table { border-collapse: collapse; }
-        th, td { border: 1px solid #999; padding: 8px 12px; text-align: left; }
-        .status-green { background: #4caf50; color: #fff; }
-        .status-amber { background: #ff9800; color: #fff; }
-        .status-red { background: #f44336; color: #fff; }
-        .badge { font-size: 0.8em; padding: 2px 6px; border-radius: 4px; background: #ddd; }
-        .badge-unverified { background: #f44336; color: #fff; }
-        .badge-provisional { background: #ff9800; color: #fff; }
-        .badge-verified { background: #4caf50; color: #fff; }
-    </style>
-</head>
-<body>
-    <p><a href="{% url 'dashboard' %}">&larr; Back to dashboard</a></p>
-    <h1>{{ county }} Scorecard{% if quarter %} &mdash; {{ quarter }} {{ year }}{% endif %}</h1>
+{% extends "base.html" %}
+{% block title %}{{ county }} Scorecard &middot; KPPAS{% endblock %}
 
+{% block extra_style %}
+  tr.action-tracker-row td { background: var(--page); padding: 12px 14px; }
+  tr.action-tracker-row ul { margin: 8px 0 0; padding-left: 18px; }
+  tr.action-tracker-row li { margin-bottom: 6px; }
+{% endblock %}
+
+{% block content %}
+  <a class="back-link" href="{% url 'dashboard' %}">&larr; Back to scorecard</a>
+  <h1>{{ county }}{% if quarter %} &mdash; {{ quarter }} {{ year }}{% endif %}</h1>
+  <p class="subtitle">Citizen perception is shown alongside the official score, not blended into it &mdash; neither source alone determines the indicator.</p>
+
+  <div class="card">
     {% if rows %}
-        <p><em>Citizen perception is shown alongside the official score, not blended into it &mdash; neither source alone determines the indicator.</em></p>
+      <div class="table-scroll">
         <table>
             <tr>
                 <th>Sector</th>
@@ -28,15 +23,27 @@
                 <th>Score</th>
                 <th>Status</th>
                 <th>Data source</th>
-                <th>Citizen Perception</th>
+                <th>Citizen perception</th>
             </tr>
             {% for row in rows %}
                 <tr>
                     <td>{{ row.sector }}</td>
                     <td>{{ row.value }}</td>
-                    <td>{{ row.target }}</td>
+                    <td>
+                        {{ row.target }}
+                        {% if row.is_signed %}
+                            <span class="badge" title="Signed {{ row.signed_at|date:'Y-m-d' }} by {{ row.signed_by }}">locked</span>
+                        {% endif %}
+                    </td>
                     <td>{{ row.score|floatformat:2 }}</td>
-                    <td class="status-{{ row.status }}">{{ row.status }}</td>
+                    <td>
+                        <span class="status-chip status-{{ row.status }}">
+                            <span class="dot"></span>
+                            {% if row.status == 'green' %}On track
+                            {% elif row.status == 'amber' %}Needs attention
+                            {% else %}Off track{% endif %}
+                        </span>
+                    </td>
                     <td>
                         {% if row.data_source %}
                             {{ row.data_source.label }}
@@ -50,8 +57,11 @@
                     </td>
                     <td>
                         {% if row.perception %}
-                            <span class="status-{{ row.perception.status }}">{{ row.perception.average_rating|floatformat:1 }} / 5</span>
-                            (n={{ row.perception.count }})
+                            <span class="status-chip status-{{ row.perception.status }}">
+                                <span class="dot"></span>
+                                {{ row.perception.average_rating|floatformat:1 }} / 5
+                            </span>
+                            <span class="badge">n={{ row.perception.count }}</span>
                             {% if row.perception.recent_comments %}
                                 <details>
                                     <summary>Recent comments</summary>
@@ -67,10 +77,28 @@
                         {% endif %}
                     </td>
                 </tr>
+                {% if row.remediation_actions %}
+                    <tr class="action-tracker-row">
+                        <td colspan="7">
+                            <strong>Action tracker</strong>
+                            <ul>
+                                {% for action in row.remediation_actions %}
+                                    <li>
+                                        <span class="status-chip status-{% if action.status == 'resolved' %}green{% elif action.status == 'in_progress' %}amber{% else %}red{% endif %}">
+                                            <span class="dot"></span>{{ action.get_status_display }}
+                                        </span>
+                                        {{ action.bottleneck }} &mdash; <strong>{{ action.responsible_party }}</strong>, due {{ action.deadline }}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </td>
+                    </tr>
+                {% endif %}
             {% endfor %}
         </table>
+      </div>
     {% else %}
-        <p>No scorecard data available for {{ county }} in this period.</p>
+      <p>No scorecard data available for {{ county }} in this period.</p>
     {% endif %}
-</body>
-</html>
+  </div>
+{% endblock %}

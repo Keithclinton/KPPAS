@@ -1,15 +1,16 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Public Feedback</title>
-</head>
-<body>
-    <h2>Submit Your Feedback</h2>
-    {% if message %}<p><b>{{ message }}</b></p>{% endif %}
+{% extends "base.html" %}
+{% block title %}Give Feedback &middot; KPPAS{% endblock %}
+
+{% block content %}
+  <h1>Submit your feedback</h1>
+  <p class="subtitle">Tell us how a service in your county is actually working. This is shown next to the official score, never averaged into it.</p>
+
+  <div class="card">
+    {% if message %}<p class="message-success">{{ message }}</p>{% endif %}
     <form method="post">
         {% csrf_token %}
         {{ form.as_p }}
-        <input type="submit" value="Submit">
+        <input type="submit" value="Submit feedback">
     </form>
-</body>
-</html>
+  </div>
+{% endblock %}

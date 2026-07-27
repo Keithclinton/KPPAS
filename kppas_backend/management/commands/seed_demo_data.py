@@ -1,10 +1,8 @@
 from django.core.management.base import BaseCommand
 
 from kppas_backend.models.public_feedback import PublicFeedback
-from kppas_backend.models.scorecard_models import CountyScore, DataSource
+from kppas_backend.models.scorecard_models import CountyScore, DataSource, PILOT_COUNTIES
 from kppas_backend.scoring import compute_score_and_status
-
-PILOT_COUNTIES = ['Nairobi', 'Kisumu', 'Mombasa', 'Nakuru', 'Garissa']
 
 # (sector, value, target) per county, loosely illustrative of BETA Agenda priorities.
 # Governance value is "audit query resolution rate (%)" -- the one self-reported

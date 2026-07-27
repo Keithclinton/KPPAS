@@ -1,63 +1,93 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>KPPAS County Scorecard</title>
-    <style>
-        table { border-collapse: collapse; }
-        th, td { border: 1px solid #999; padding: 8px 12px; text-align: center; }
-        .status-green { background: #4caf50; color: #fff; }
-        .status-amber { background: #ff9800; color: #fff; }
-        .status-red { background: #f44336; color: #fff; }
-        .status-empty { background: #eee; color: #999; }
-        a { color: inherit; text-decoration: none; display: block; }
-    </style>
-</head>
-<body>
-    <h1>KPPAS County Scorecard</h1>
+{% extends "base.html" %}
+{% block title %}KPPAS &middot; County Scorecard{% endblock %}
 
+{% block extra_style %}
+  .period-form { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 0.9rem; }
+  .period-form select { font: inherit; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); color: var(--ink); }
+  .legend-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 4px 0 18px; font-size: 0.82rem; color: var(--ink-secondary); }
+  .legend-row .perception-dot { margin-left: 0; }
+  table.grid th:first-child, table.grid td:first-child { position: sticky; left: 0; background: var(--surface); }
+  table.grid td { text-align: center; }
+  table.grid th:first-child, table.grid td.county-cell { text-align: left; }
+  .grid-cell-link { display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; }
+  .grid-cell-link .score-value { font-weight: 700; font-size: 1rem; color: var(--ink); }
+  td.status-empty-cell { color: var(--ink-muted); text-align: center; }
+  .perception-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+  }
+  .perception-dot.status-green { background: var(--good); }
+  .perception-dot.status-amber { background: var(--warning); }
+  .perception-dot.status-red { background: var(--critical); }
+{% endblock %}
+
+{% block content %}
+  <h1>County Scorecard</h1>
+  <p class="subtitle">Official sector scores per county, each cell linking to the full breakdown alongside citizen-reported experience.</p>
+
+  <div class="card">
     {% if periods %}
-        <form method="get">
-            <label>Period:
-                <select name="period_select" onchange="
-                    var parts = this.value.split('|');
-                    window.location.search = '?year=' + parts[0] + '&quarter=' + parts[1];
-                ">
-                {% for p_year, p_quarter in periods %}
-                    <option value="{{ p_year }}|{{ p_quarter }}" {% if p_year == year and p_quarter == quarter %}selected{% endif %}>
-                        {{ p_quarter }} {{ p_year }}
-                    </option>
-                {% endfor %}
-                </select>
-            </label>
-        </form>
-        <p>Showing: {{ quarter }} {{ year }}</p>
+      <form method="get" class="period-form">
+        <label for="period_select">Period</label>
+        <select id="period_select" name="period_select" onchange="
+            var parts = this.value.split('|');
+            window.location.search = '?year=' + parts[0] + '&quarter=' + parts[1];
+        ">
+        {% for p_year, p_quarter in periods %}
+            <option value="{{ p_year }}|{{ p_quarter }}" {% if p_year == year and p_quarter == quarter %}selected{% endif %}>
+                {{ p_quarter }} {{ p_year }}
+            </option>
+        {% endfor %}
+        </select>
+      </form>
+      <div class="legend-row">
+        <span class="status-chip status-green"><span class="dot"></span>On track</span>
+        <span class="status-chip status-amber"><span class="dot"></span>Needs attention</span>
+        <span class="status-chip status-red"><span class="dot"></span>Off track</span>
+        <span><span class="perception-dot status-amber"></span>&nbsp;= citizen feedback available (color = sentiment)</span>
+      </div>
     {% else %}
-        <p>No scorecard data available yet.</p>
+      <p>No scorecard data available yet.</p>
     {% endif %}
 
     {% if grid %}
-        <table>
+      <div class="table-scroll">
+        <table class="grid">
             <tr>
                 <th>County</th>
                 {% for sector in sectors %}<th>{{ sector }}</th>{% endfor %}
             </tr>
             {% for row in grid %}
                 <tr>
-                    <th>{{ row.county }}</th>
+                    <th class="county-cell">{{ row.county }}</th>
                     {% for cell in row.cells %}
                         {% if cell %}
-                            <td class="status-{{ cell.status }}">
-                                <a href="{% url 'county_detail' row.county %}?year={{ year }}&quarter={{ quarter }}">
-                                    {{ cell.score|floatformat:2 }}
+                            <td>
+                                <a class="grid-cell-link" href="{% url 'county_detail' row.county %}?year={{ year }}&quarter={{ quarter }}">
+                                    <span class="score-value">{{ cell.score|floatformat:2 }}</span>
+                                    <span class="status-chip status-{{ cell.status }}">
+                                        <span class="dot"></span>
+                                        {% if cell.status == 'green' %}On track
+                                        {% elif cell.status == 'amber' %}Needs attention
+                                        {% else %}Off track{% endif %}
+                                    </span>
+                                    {% if cell.perception %}
+                                        <span class="perception-dot status-{{ cell.perception.status }}"
+                                              title="Citizen perception: {{ cell.perception.average_rating|floatformat:1 }}/5 (n={{ cell.perception.count }})"></span>
+                                    {% endif %}
                                 </a>
                             </td>
                         {% else %}
-                            <td class="status-empty">&mdash;</td>
+                            <td class="status-empty-cell">&mdash;</td>
                         {% endif %}
                     {% endfor %}
                 </tr>
             {% endfor %}
         </table>
+      </div>
     {% endif %}
-</body>
-</html>
+  </div>
+{% endblock %}
