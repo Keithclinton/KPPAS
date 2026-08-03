@@ -4,29 +4,17 @@
 {% block extra_style %}
   .period-form { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 0.9rem; }
   .period-form select { font: inherit; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); color: var(--ink); }
-  .legend-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 4px 0 18px; font-size: 0.82rem; color: var(--ink-secondary); }
-  .legend-row .perception-dot { margin-left: 0; }
-  table.grid th:first-child, table.grid td:first-child { position: sticky; left: 0; background: var(--surface); }
-  table.grid td { text-align: center; }
-  table.grid th:first-child, table.grid td.county-cell { text-align: left; }
-  .grid-cell-link { display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; }
-  .grid-cell-link .score-value { font-weight: 700; font-size: 1rem; color: var(--ink); }
-  td.status-empty-cell { color: var(--ink-muted); text-align: center; }
-  .perception-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    border: 1px solid var(--border);
-  }
-  .perception-dot.status-green { background: var(--good); }
-  .perception-dot.status-amber { background: var(--warning); }
-  .perception-dot.status-red { background: var(--critical); }
+  h2.county-heading { margin: 28px 0 10px; }
+  h2.county-heading a { color: var(--ink); text-decoration: none; }
+  h2.county-heading a:hover { color: var(--link); }
+  tr.action-tracker-row td { background: var(--page); padding: 12px 14px; }
+  tr.action-tracker-row ul { margin: 8px 0 0; padding-left: 18px; }
+  tr.action-tracker-row li { margin-bottom: 6px; }
 {% endblock %}
 
 {% block content %}
   <h1>County Scorecard</h1>
-  <p class="subtitle">Official sector scores per county, each cell linking to the full breakdown alongside citizen-reported experience.</p>
+  <p class="subtitle">Official sector scores per county, alongside citizen-reported experience for each &mdash; not blended into the official score.</p>
 
   <div class="card">
     {% if periods %}
@@ -43,51 +31,101 @@
         {% endfor %}
         </select>
       </form>
-      <div class="legend-row">
-        <span class="status-chip status-green"><span class="dot"></span>On track</span>
-        <span class="status-chip status-amber"><span class="dot"></span>Needs attention</span>
-        <span class="status-chip status-red"><span class="dot"></span>Off track</span>
-        <span><span class="perception-dot status-amber"></span>&nbsp;= citizen feedback available (color = sentiment)</span>
-      </div>
     {% else %}
       <p>No scorecard data available yet.</p>
     {% endif %}
+  </div>
 
-    {% if grid %}
+  {% for section in county_sections %}
+    <h2 class="county-heading">
+      <a href="{% url 'county_detail' section.county %}?year={{ year }}&quarter={{ quarter }}">{{ section.county }}</a>
+    </h2>
+    <div class="card">
       <div class="table-scroll">
-        <table class="grid">
+        <table>
             <tr>
-                <th>County</th>
-                {% for sector in sectors %}<th>{{ sector }}</th>{% endfor %}
+                <th>Sector</th>
+                <th>Value</th>
+                <th>Target</th>
+                <th>Score</th>
+                <th>Status</th>
+                <th>Data source</th>
+                <th>Citizen perception</th>
             </tr>
-            {% for row in grid %}
+            {% for row in section.rows %}
                 <tr>
-                    <th class="county-cell">{{ row.county }}</th>
-                    {% for cell in row.cells %}
-                        {% if cell %}
-                            <td>
-                                <a class="grid-cell-link" href="{% url 'county_detail' row.county %}?year={{ year }}&quarter={{ quarter }}">
-                                    <span class="score-value">{{ cell.score|floatformat:2 }}</span>
-                                    <span class="status-chip status-{{ cell.status }}">
-                                        <span class="dot"></span>
-                                        {% if cell.status == 'green' %}On track
-                                        {% elif cell.status == 'amber' %}Needs attention
-                                        {% else %}Off track{% endif %}
-                                    </span>
-                                    {% if cell.perception %}
-                                        <span class="perception-dot status-{{ cell.perception.status }}"
-                                              title="Citizen perception: {{ cell.perception.average_rating|floatformat:1 }}/5 (n={{ cell.perception.count }})"></span>
-                                    {% endif %}
-                                </a>
-                            </td>
-                        {% else %}
-                            <td class="status-empty-cell">&mdash;</td>
+                    <td>{{ row.sector }}</td>
+                    <td>{{ row.value }}</td>
+                    <td>
+                        {{ row.target }}
+                        {% if row.is_signed %}
+                            <span class="badge" title="Signed {{ row.signed_at|date:'Y-m-d' }} by {{ row.signed_by }}">locked</span>
                         {% endif %}
-                    {% endfor %}
+                    </td>
+                    <td>{{ row.score|floatformat:2 }}</td>
+                    <td>
+                        <span class="status-chip status-{{ row.status }}">
+                            <span class="dot"></span>
+                            {% if row.status == 'green' %}On track
+                            {% elif row.status == 'amber' %}Needs attention
+                            {% else %}Off track{% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        {% if row.data_source %}
+                            {{ row.data_source.label }}
+                            <span class="badge badge-{{ row.data_source.trust_tier }}">{{ row.data_source.trust_tier }}</span>
+                            {% if row.data_source.origin_url %}
+                                &mdash; <a href="{{ row.data_source.origin_url }}">source</a>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge badge-unverified">no source recorded</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if row.perception %}
+                            <span class="status-chip status-{{ row.perception.status }}">
+                                <span class="dot"></span>
+                                {{ row.perception.average_rating|floatformat:1 }} / 5
+                            </span>
+                            <span class="badge">n={{ row.perception.count }}</span>
+                            {% if row.perception.recent_comments %}
+                                <details>
+                                    <summary>Recent comments</summary>
+                                    <ul>
+                                        {% for comment in row.perception.recent_comments %}
+                                            <li>&ldquo;{{ comment.comment }}&rdquo; &mdash; {{ comment.name }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </details>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge">no citizen feedback yet</span>
+                        {% endif %}
+                        <br>
+                        <a href="{% url 'feedback' %}?county={{ section.county }}&sector={{ row.sector }}">Rate this sector &rarr;</a>
+                    </td>
                 </tr>
+                {% if row.remediation_actions %}
+                    <tr class="action-tracker-row">
+                        <td colspan="7">
+                            <strong>Action tracker</strong>
+                            <ul>
+                                {% for action in row.remediation_actions %}
+                                    <li>
+                                        <span class="status-chip status-{% if action.status == 'resolved' %}green{% elif action.status == 'in_progress' %}amber{% else %}red{% endif %}">
+                                            <span class="dot"></span>{{ action.get_status_display }}
+                                        </span>
+                                        {{ action.bottleneck }} &mdash; <strong>{{ action.responsible_party }}</strong>, due {{ action.deadline }}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </td>
+                    </tr>
+                {% endif %}
             {% endfor %}
         </table>
       </div>
-    {% endif %}
-  </div>
+    </div>
+  {% endfor %}
 {% endblock %}

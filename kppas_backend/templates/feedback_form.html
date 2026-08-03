@@ -1,16 +1,121 @@
 {% extends "base.html" %}
 {% block title %}Give Feedback &middot; KPPAS{% endblock %}
 
+{% block extra_style %}
+  .picker-form { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+  .picker-form label { display: block; font-size: 0.85rem; color: var(--ink-secondary); font-weight: 600; margin-bottom: 5px; }
+  .picker-form select { font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); color: var(--ink); min-width: 180px; }
+  .score-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 18px 0; }
+  .score-panel h3 { margin: 0 0 8px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-muted); }
+  .score-panel .big-value { font-size: 1.5rem; font-weight: 700; }
+  .score-panel .big-value .of-target { font-weight: 400; font-size: 0.6em; color: var(--ink-muted); }
+  .score-panel p { margin: 8px 0 0; font-size: 0.85rem; color: var(--ink-secondary); }
+  .field-errors { color: var(--critical); font-size: 0.82rem; margin: 2px 0 0; }
+{% endblock %}
+
 {% block content %}
-  <h1>Submit your feedback</h1>
-  <p class="subtitle">Tell us how a service in your county is actually working. This is shown next to the official score, never averaged into it.</p>
+  <h1>Rate a county service</h1>
+  <p class="subtitle">Pick a county and sector to see its current official score and what other citizens have said, then add your own rating and comment. Your rating is shown next to the official score, never averaged into it.</p>
 
   <div class="card">
-    {% if message %}<p class="message-success">{{ message }}</p>{% endif %}
-    <form method="post">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <input type="submit" value="Submit feedback">
+    <form method="get" class="picker-form">
+      <div>
+        <label for="picker_county">County</label>
+        <select id="picker_county" name="county" onchange="this.form.submit()">
+          <option value="">Select county</option>
+          {% for c in counties %}
+            <option value="{{ c }}" {% if c == county %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="picker_sector">Sector</label>
+        <select id="picker_sector" name="sector" onchange="this.form.submit()">
+          <option value="">Select sector</option>
+          {% for s in sectors %}
+            <option value="{{ s }}" {% if s == sector %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
     </form>
   </div>
+
+  {% if county and sector %}
+    <div class="score-panels">
+      <div class="card score-panel">
+        <h3>Official score{% if period.1 %} &middot; {{ period.1 }} {{ period.0 }}{% endif %}</h3>
+        {% if official_score %}
+          <div class="big-value">{{ official_score.value }} <span class="of-target">/ target {{ official_score.target }}</span></div>
+          <p>
+            <span class="status-chip status-{{ official_score.status }}">
+              <span class="dot"></span>
+              {% if official_score.status == 'green' %}On track{% elif official_score.status == 'amber' %}Needs attention{% else %}Off track{% endif %}
+            </span>
+          </p>
+          <p>
+            Source:
+            {% if official_score.data_source %}
+              {{ official_score.data_source.label }}
+              <span class="badge badge-{{ official_score.data_source.trust_tier }}">{{ official_score.data_source.trust_tier }}</span>
+            {% else %}
+              <span class="badge badge-unverified">no source recorded</span>
+            {% endif %}
+          </p>
+        {% else %}
+          <p>No official score recorded yet for {{ sector }} in {{ county }} this period.</p>
+        {% endif %}
+      </div>
+
+      <div class="card score-panel">
+        <h3>Citizen perception so far</h3>
+        {% if perception %}
+          <div class="big-value">{{ perception.average_rating|floatformat:1 }} <span class="of-target">/ 5</span></div>
+          <p>
+            <span class="status-chip status-{{ perception.status }}">
+              <span class="dot"></span>{{ perception.count }} rating{{ perception.count|pluralize }}
+            </span>
+          </p>
+          {% if perception.recent_comments %}
+            <details>
+              <summary>Recent comments</summary>
+              <ul>
+                {% for comment in perception.recent_comments %}
+                  <li>&ldquo;{{ comment.comment }}&rdquo; &mdash; {{ comment.name }}</li>
+                {% endfor %}
+              </ul>
+            </details>
+          {% endif %}
+        {% else %}
+          <p>No citizen ratings yet for {{ sector }} in {{ county }} &mdash; be the first.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      {% if message %}<p class="message-success">{{ message }}</p>{% endif %}
+      <form method="post">
+        {% csrf_token %}
+        {{ form.county.as_hidden }}
+        {{ form.sector.as_hidden }}
+        <p>
+          {{ form.name.label_tag }}
+          {{ form.name }}
+          {% if form.name.errors %}<span class="field-errors">{{ form.name.errors|join:", " }}</span>{% endif %}
+        </p>
+        <p>
+          {{ form.rating.label_tag }}
+          {{ form.rating }}
+          {% if form.rating.errors %}<span class="field-errors">{{ form.rating.errors|join:", " }}</span>{% endif %}
+        </p>
+        <p>
+          {{ form.comment.label_tag }}
+          {{ form.comment }}
+          {% if form.comment.errors %}<span class="field-errors">{{ form.comment.errors|join:", " }}</span>{% endif %}
+        </p>
+        <input type="submit" value="Submit rating">
+      </form>
+    </div>
+  {% else %}
+    <p>Choose a county and sector above to see its scorecard and add your rating.</p>
+  {% endif %}
 {% endblock %}

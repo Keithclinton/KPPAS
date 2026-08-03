@@ -12,23 +12,56 @@ from django.views.decorators.http import require_POST
 
 from .forms import PublicFeedbackForm, CountyScoreUploadForm
 from .models.public_feedback import PublicFeedback, SECTOR_CHOICES
-from .models.scorecard_models import CountyScore, DataSource, RemediationAction, PILOT_COUNTIES
+from .models.scorecard_models import (
+    CountyScore, DataSource, RemediationAction, PILOT_COUNTIES, ADMIN_CONTACT_EMAIL,
+)
 from .scoring import compute_score_and_status, compute_perception_status
 
 USSD_SECTORS = [choice for choice, _ in SECTOR_CHOICES if choice != 'General']
 
 
+def data_access_view(request):
+    return render(request, 'data_access.html', {'contact_email': ADMIN_CONTACT_EMAIL})
+
+
 def feedback_view(request):
     message = ''
+    county = request.POST.get('county') or request.GET.get('county') or ''
+    sector = request.POST.get('sector') or request.GET.get('sector') or ''
+
     if request.method == 'POST':
         form = PublicFeedbackForm(request.POST)
         if form.is_valid():
             form.save()
             message = 'Thank you for your feedback!'
-            form = PublicFeedbackForm()  # Reset form
+            county = form.cleaned_data['county']
+            sector = form.cleaned_data['sector']
+            form = PublicFeedbackForm(initial={'county': county, 'sector': sector})
     else:
-        form = PublicFeedbackForm()
-    return render(request, 'feedback_form.html', {'form': form, 'message': message})
+        form = PublicFeedbackForm(initial={'county': county, 'sector': sector} if county and sector else None)
+
+    context = {
+        'form': form,
+        'message': message,
+        'county': county,
+        'sector': sector,
+        'counties': PILOT_COUNTIES,
+        'sectors': USSD_SECTORS,
+    }
+
+    if county and sector:
+        periods = _get_available_periods()
+        year, quarter = _resolve_period(request, periods)
+        context['period'] = (year, quarter)
+        if year is not None:
+            context['official_score'] = (
+                CountyScore.objects.filter(county=county, sector=sector, year=year, quarter=quarter)
+                .select_related('data_source')
+                .first()
+            )
+        context['perception'] = _get_perception(county, sector)
+
+    return render(request, 'feedback_form.html', context)
 
 
 @staff_member_required
@@ -147,28 +180,25 @@ def dashboard_view(request):
     scores = []
     if year is not None:
         scores = list(
-            CountyScore.objects.filter(year=year, quarter=quarter).select_related('data_source')
+            CountyScore.objects.filter(year=year, quarter=quarter)
+            .select_related('data_source')
+            .order_by('county', 'sector')
+        )
+
+    for row in scores:
+        row.perception = _get_perception(row.county, row.sector)
+        row.remediation_actions = (
+            list(row.actions.order_by('deadline')) if row.status == 'red' else []
         )
 
     counties = sorted({s.county for s in scores})
-    sectors = sorted({s.sector for s in scores})
-    by_county_sector = {(s.county, s.sector): s for s in scores}
-    perception_map = _get_perception_map(counties, sectors)
-
-    for cell in by_county_sector.values():
-        cell.perception = perception_map.get((cell.county, cell.sector))
-
-    grid = [
-        {
-            'county': county,
-            'cells': [by_county_sector.get((county, sector)) for sector in sectors],
-        }
+    county_sections = [
+        {'county': county, 'rows': [s for s in scores if s.county == county]}
         for county in counties
     ]
 
     return render(request, 'dashboard.html', {
-        'sectors': sectors,
-        'grid': grid,
+        'county_sections': county_sections,
         'periods': periods,
         'year': year,
         'quarter': quarter,
@@ -232,24 +262,6 @@ def county_detail_view(request, county):
         'year': year,
         'quarter': quarter,
     })
-
-
-def _get_perception_map(counties, sectors):
-    if not counties or not sectors:
-        return {}
-    rows = (
-        PublicFeedback.objects.filter(county__in=counties, sector__in=sectors)
-        .values('county', 'sector')
-        .annotate(average_rating=Avg('rating'), count=Count('id'))
-    )
-    return {
-        (row['county'], row['sector']): {
-            'average_rating': row['average_rating'],
-            'count': row['count'],
-            'status': compute_perception_status(row['average_rating']),
-        }
-        for row in rows
-    }
 
 
 def _get_perception(county, sector):

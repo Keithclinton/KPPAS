@@ -75,6 +75,8 @@
                         {% else %}
                             <span class="badge">no citizen feedback yet</span>
                         {% endif %}
+                        <br>
+                        <a href="{% url 'feedback' %}?county={{ county }}&sector={{ row.sector }}">Rate this sector &rarr;</a>
                     </td>
                 </tr>
                 {% if row.remediation_actions %}

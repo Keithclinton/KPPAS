@@ -5,6 +5,9 @@ from django.db import models
 # the real ETL commands, and the USSD county menu.
 PILOT_COUNTIES = ['Nairobi', 'Kisumu', 'Mombasa', 'Nakuru', 'Garissa']
 
+# Where to direct people asking about licensed data/API access.
+ADMIN_CONTACT_EMAIL = 'keithnyaburi@gmail.com'
+
 
 class Sector(models.Model):
     name = models.CharField(max_length=100, unique=True)

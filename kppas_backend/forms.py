@@ -1,8 +1,10 @@
 from django import forms
 from .models.public_feedback import PublicFeedback
-from .models.scorecard_models import DataSource
+from .models.scorecard_models import DataSource, PILOT_COUNTIES
 
 class PublicFeedbackForm(forms.ModelForm):
+    county = forms.ChoiceField(choices=[(c, c) for c in PILOT_COUNTIES])
+
     class Meta:
         model = PublicFeedback
         fields = ['name', 'county', 'sector', 'rating', 'comment']
