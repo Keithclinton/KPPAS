@@ -1,15 +1,13 @@
-# ETL script for Housing sector (Kenya Open Data)
-# Replace URL and parsing logic with actual endpoint details
-import requests
-
-def fetch_housing_data():
-    url = 'https://opendata.go.ke/api/housing-indicators'  # Placeholder
-    response = requests.get(url)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        return None
-
-if __name__ == '__main__':
-    data = fetch_housing_data()
-    print(data)
+# ETL script for Housing sector.
+#
+# STATUS: no automated county-level source available -- use manual entry
+# (Django admin or the /data/upload/ CSV form) with an appropriate DataSource.
+# Enter data under CountyScore(sector='Housing', ...).
+#
+# Why not automated:
+# - Kenya's national Open Data portal (opendata.go.ke) has been offline for
+#   years pending a legal/institutional revival.
+# - KNBS's 2023/24 Kenya Housing Survey covers all 47 counties but is only
+#   published as static PDF/Excel reports and gated microdata (NADA catalog,
+#   https://statistics.knbs.or.ke/nada/index.php/catalog/184), not a live,
+#   queryable dataset -- there's nothing here to poll on a schedule.
