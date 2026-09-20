@@ -18,18 +18,18 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 from .views import (
-    feedback_view, upload_scores_view, dashboard_view, county_detail_view,
-    rankings_view, ussd_feedback_view, data_access_view,
+    feedback_view, ussd_feedback_view, data_access_view,
+    promise_registry_view, county_promises_view, county_brief_view, promise_detail_view,
 )
 from .api import open_data_api
 
 urlpatterns = [
-    path('', dashboard_view, name='dashboard'),
-    path('rankings/', rankings_view, name='rankings'),
-    path('county/<str:county>/', county_detail_view, name='county_detail'),
+    path('', promise_registry_view, name='promise_registry'),
+    path('promises/<str:county>/', county_promises_view, name='county_promises'),
+    path('promises/<str:county>/brief/', county_brief_view, name='county_brief'),
+    path('promises/<str:county>/<int:promise_id>/', promise_detail_view, name='promise_detail'),
     path('admin/', admin.site.urls),
     path('feedback/', feedback_view, name='feedback'),
-    path('data/upload/', upload_scores_view, name='upload_scores'),
     path('data/access/', data_access_view, name='data_access'),
     path('api/open-data/', open_data_api, name='open_data_api'),
     path('ussd/feedback/', ussd_feedback_view, name='ussd_feedback'),

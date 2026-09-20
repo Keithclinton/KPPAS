@@ -3,10 +3,10 @@
 
 {% block content %}
   <h1>Data &amp; API access</h1>
-  <p class="subtitle">Structured county scorecard data &mdash; raw scores, targets, methodology, and data provenance &mdash; is available as a licensed feed for research, media, and civic-tech use.</p>
+  <p class="subtitle">Structured Promise Registry data &mdash; logged commitments, sources, and quarterly verification scores &mdash; is available as a licensed feed for research, media, and civic-tech use.</p>
 
   <div class="card">
-    <p>The scorecard itself stays free to browse on this site: the <a href="{% url 'dashboard' %}">county scorecard</a>, <a href="{% url 'rankings' %}">rankings</a>, and county detail pages are open to everyone.</p>
+    <p>The registry itself stays free to browse on this site: the <a href="{% url 'promise_registry' %}">promise registry</a> and each county's page are open to everyone.</p>
     <p>Programmatic/bulk access to the underlying dataset via API is a paid, licensed product and isn't publicly available.</p>
     <p>To request access, contact <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>.</p>
   </div>

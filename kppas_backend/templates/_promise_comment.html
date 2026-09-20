@@ -1,0 +1,21 @@
+<div class="comment" id="comment-{{ comment.id }}">
+  <p class="comment-meta"><strong>{{ comment.name|default:"Anonymous" }}</strong> &middot; {{ comment.posted_at|date:"Y-m-d H:i" }}</p>
+  <p class="comment-text">{{ comment.text|linebreaksbr }}</p>
+  <details class="reply-toggle">
+    <summary>Reply</summary>
+    <form method="post" class="comment-form">
+      {% csrf_token %}
+      <input type="hidden" name="parent_id" value="{{ comment.id }}">
+      {{ form.name }}
+      {{ form.text }}
+      <input type="submit" value="Reply">
+    </form>
+  </details>
+  {% if comment.child_comments %}
+    <div class="comment-replies">
+      {% for reply in comment.child_comments %}
+        {% include "_promise_comment.html" with comment=reply %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>

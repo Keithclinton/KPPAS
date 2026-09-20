@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{{ promise.text|truncatechars:60 }} &middot; KPPAS{% endblock %}
+
+{% block extra_style %}
+  .comment { padding: 12px 0; border-top: 1px solid var(--grid); }
+  .comment:first-child { border-top: none; }
+  .comment-meta { margin: 0; font-size: 0.82rem; color: var(--ink-muted); }
+  .comment-text { margin: 4px 0 6px; white-space: pre-line; }
+  .reply-toggle summary { font-size: 0.82rem; color: var(--link); cursor: pointer; }
+  .comment-form { display: flex; flex-direction: column; gap: 8px; max-width: 480px; margin-top: 8px; }
+  .comment-form input[type="text"], .comment-form textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); color: var(--ink); }
+  .comment-form input[type="submit"] { max-width: max-content; background: var(--link); color: #fff; border: none; padding: 7px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+  .comment-replies { margin-left: 20px; padding-left: 14px; border-left: 2px solid var(--grid); }
+  .verification-row { padding: 10px 0; border-top: 1px solid var(--grid); }
+  .verification-row:first-child { border-top: none; }
+{% endblock %}
+
+{% block content %}
+  <a class="back-link" href="{% url 'county_promises' county %}">&larr; {{ county }} promises</a>
+
+  <div class="card">
+    <span class="badge">{{ promise.category }}</span>
+    {% if promise.status == 'delivered' %}
+      <span class="status-chip status-green"><span class="dot"></span>Delivered</span>
+    {% elif promise.status == 'broken' %}
+      <span class="status-chip status-red"><span class="dot"></span>Broken</span>
+    {% elif promise.status == 'delayed' %}
+      <span class="status-chip status-amber"><span class="dot"></span>Delayed</span>
+    {% elif promise.status == 'in_progress' %}
+      <span class="status-chip status-amber"><span class="dot"></span>In progress</span>
+    {% else %}
+      <span class="badge">Pending</span>
+    {% endif %}
+
+    <h1>{{ promise.text }}</h1>
+    <p class="subtitle">
+      {{ promise.responsible_actor }} &middot; {{ county }} &middot; made {{ promise.date_made }}
+      {% if promise.stated_deadline %} &middot; due {{ promise.stated_deadline }}{% elif promise.deadline_text %} &middot; due {{ promise.deadline_text }}{% endif %}
+    </p>
+    <p>
+      Source:
+      {% if promise.source.url %}<a href="{{ promise.source.url }}">{{ promise.source.title }}</a>{% else %}{{ promise.source.title }}{% endif %}
+      {% if promise.source.reference %}<span class="badge">{{ promise.source.reference }}</span>{% endif %}
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Verification history</h2>
+    {% if verifications %}
+      {% for v in verifications %}
+        <div class="verification-row">
+          <span class="status-chip status-{{ v.score }}"><span class="dot"></span>{{ v.quarter }} {{ v.year }}</span>
+          {% if v.notes %}<p>{{ v.notes }}</p>{% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <p>Not yet verified.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Discussion{% if comment_count %} ({{ comment_count }}){% endif %}</h2>
+    <p class="subtitle">Public discussion on this specific promise &mdash; on-the-ground reports are useful evidence when this gets verified.</p>
+
+    {% for comment in top_comments %}
+      {% include "_promise_comment.html" %}
+    {% empty %}
+      <p>No comments yet &mdash; be the first to say what you've seen.</p>
+    {% endfor %}
+
+    <h3 style="margin-top:20px;">Add a comment</h3>
+    <form method="post" class="comment-form">
+      {% csrf_token %}
+      {{ form.name }}
+      {{ form.text }}
+      {% if form.text.errors %}<span class="field-errors">{{ form.text.errors|join:", " }}</span>{% endif %}
+      <input type="submit" value="Post comment">
+    </form>
+  </div>
+{% endblock %}

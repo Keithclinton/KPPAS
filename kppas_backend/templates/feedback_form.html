@@ -8,14 +8,17 @@
   .score-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 18px 0; }
   .score-panel h3 { margin: 0 0 8px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-muted); }
   .score-panel .big-value { font-size: 1.5rem; font-weight: 700; }
-  .score-panel .big-value .of-target { font-weight: 400; font-size: 0.6em; color: var(--ink-muted); }
   .score-panel p { margin: 8px 0 0; font-size: 0.85rem; color: var(--ink-secondary); }
   .field-errors { color: var(--critical); font-size: 0.82rem; margin: 2px 0 0; }
 {% endblock %}
 
 {% block content %}
-  <h1>Rate a county service</h1>
-  <p class="subtitle">Pick a county and sector to see its current official score and what other citizens have said, then add your own rating and comment. Your rating is shown next to the official score, never averaged into it.</p>
+  <h1>Give feedback on a county service</h1>
+  <p class="subtitle">
+    Pick a county and sector to see what other citizens have said, then add your own comment.
+    This isn't a score &mdash; it's a separate signal analysts read alongside the
+    <a href="{% url 'promise_registry' %}">Promise Registry</a> when verifying whether something was actually delivered.
+  </p>
 
   <div class="card">
     <form method="get" class="picker-form">
@@ -43,38 +46,9 @@
   {% if county and sector %}
     <div class="score-panels">
       <div class="card score-panel">
-        <h3>Official score{% if period.1 %} &middot; {{ period.1 }} {{ period.0 }}{% endif %}</h3>
-        {% if official_score %}
-          <div class="big-value">{{ official_score.value }} <span class="of-target">/ target {{ official_score.target }}</span></div>
-          <p>
-            <span class="status-chip status-{{ official_score.status }}">
-              <span class="dot"></span>
-              {% if official_score.status == 'green' %}On track{% elif official_score.status == 'amber' %}Needs attention{% else %}Off track{% endif %}
-            </span>
-          </p>
-          <p>
-            Source:
-            {% if official_score.data_source %}
-              {{ official_score.data_source.label }}
-              <span class="badge badge-{{ official_score.data_source.trust_tier }}">{{ official_score.data_source.trust_tier }}</span>
-            {% else %}
-              <span class="badge badge-unverified">no source recorded</span>
-            {% endif %}
-          </p>
-        {% else %}
-          <p>No official score recorded yet for {{ sector }} in {{ county }} this period.</p>
-        {% endif %}
-      </div>
-
-      <div class="card score-panel">
-        <h3>Citizen perception so far</h3>
+        <h3>Citizen feedback so far</h3>
         {% if perception %}
-          <div class="big-value">{{ perception.average_rating|floatformat:1 }} <span class="of-target">/ 5</span></div>
-          <p>
-            <span class="status-chip status-{{ perception.status }}">
-              <span class="dot"></span>{{ perception.count }} rating{{ perception.count|pluralize }}
-            </span>
-          </p>
+          <div class="big-value">{{ perception.count }} comment{{ perception.count|pluralize }}</div>
           {% if perception.recent_comments %}
             <details>
               <summary>Recent comments</summary>
@@ -86,8 +60,13 @@
             </details>
           {% endif %}
         {% else %}
-          <p>No citizen ratings yet for {{ sector }} in {{ county }} &mdash; be the first.</p>
+          <p>No citizen feedback yet for {{ sector }} in {{ county }} &mdash; be the first.</p>
         {% endif %}
+      </div>
+      <div class="card score-panel">
+        <h3>{{ county }}'s promise registry</h3>
+        <p>See what {{ county }} has actually committed to in {{ sector }} and whether it's been verified as delivered.</p>
+        <p><a href="{% url 'county_promises' county %}">View {{ county }}'s promises &rarr;</a></p>
       </div>
     </div>
 
@@ -103,19 +82,14 @@
           {% if form.name.errors %}<span class="field-errors">{{ form.name.errors|join:", " }}</span>{% endif %}
         </p>
         <p>
-          {{ form.rating.label_tag }}
-          {{ form.rating }}
-          {% if form.rating.errors %}<span class="field-errors">{{ form.rating.errors|join:", " }}</span>{% endif %}
-        </p>
-        <p>
           {{ form.comment.label_tag }}
           {{ form.comment }}
           {% if form.comment.errors %}<span class="field-errors">{{ form.comment.errors|join:", " }}</span>{% endif %}
         </p>
-        <input type="submit" value="Submit rating">
+        <input type="submit" value="Submit feedback">
       </form>
     </div>
   {% else %}
-    <p>Choose a county and sector above to see its scorecard and add your rating.</p>
+    <p>Choose a county and sector above to see citizen feedback and add your own.</p>
   {% endif %}
 {% endblock %}

@@ -1,21 +1,19 @@
-import csv
-import io
+from collections import Counter
+from datetime import datetime
 
 from django.conf import settings
-from django.contrib.admin.views.decorators import staff_member_required
-from django.db import transaction
-from django.db.models import Avg, Count
+from django.db.models import Count, Q
 from django.http import HttpResponse
-from django.shortcuts import render, redirect
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from .forms import PublicFeedbackForm, CountyScoreUploadForm
+from .forms import PublicFeedbackForm, PromiseCommentForm
 from .models.public_feedback import PublicFeedback, SECTOR_CHOICES
-from .models.scorecard_models import (
-    CountyScore, DataSource, RemediationAction, PILOT_COUNTIES, ADMIN_CONTACT_EMAIL,
-)
-from .scoring import compute_score_and_status, compute_perception_status
+from .models.promise_registry import Promise, PromiseVerification, PromiseComment, CountyProcurementActivity
+from .models.scorecard_models import PILOT_COUNTIES, ADMIN_CONTACT_EMAIL
+from .scoring import aggregate_promise_scores
 
 USSD_SECTORS = [choice for choice, _ in SECTOR_CHOICES if choice != 'General']
 
@@ -50,112 +48,9 @@ def feedback_view(request):
     }
 
     if county and sector:
-        periods = _get_available_periods()
-        year, quarter = _resolve_period(request, periods)
-        context['period'] = (year, quarter)
-        if year is not None:
-            context['official_score'] = (
-                CountyScore.objects.filter(county=county, sector=sector, year=year, quarter=quarter)
-                .select_related('data_source')
-                .first()
-            )
         context['perception'] = _get_perception(county, sector)
 
     return render(request, 'feedback_form.html', context)
-
-
-@staff_member_required
-def upload_scores_view(request):
-    results = None
-    if request.method == 'POST':
-        form = CountyScoreUploadForm(request.POST, request.FILES)
-        if form.is_valid():
-            results = _process_score_upload(form, request.user)
-            form = CountyScoreUploadForm()
-    else:
-        form = CountyScoreUploadForm()
-    return render(request, 'upload_scores.html', {'form': form, 'results': results})
-
-
-def _process_score_upload(form, user):
-    sector = form.cleaned_data['sector']
-    quarter = form.cleaned_data['quarter']
-    year = form.cleaned_data['year']
-    uploaded_file = form.cleaned_data['file']
-
-    decoded = io.TextIOWrapper(uploaded_file.file, encoding='utf-8')
-    reader = csv.DictReader(decoded)
-    fieldnames = {(name or '').strip().lower(): name for name in (reader.fieldnames or [])}
-
-    created, updated, errors, locked_notes = 0, 0, [], []
-
-    with transaction.atomic():
-        data_source = DataSource.objects.create(
-            label=form.cleaned_data['label'],
-            source_type=form.cleaned_data['source_type'],
-            trust_tier=form.cleaned_data['trust_tier'],
-            origin_url=form.cleaned_data['origin_url'],
-            notes=form.cleaned_data['notes'],
-            file=form.cleaned_data['file'],
-            uploaded_by=user if user.is_authenticated else None,
-        )
-
-        if 'county' not in fieldnames or 'value' not in fieldnames or 'target' not in fieldnames:
-            errors.append('CSV must have county, value, and target columns.')
-        else:
-            for row_number, row in enumerate(reader, start=2):
-                county = (row.get(fieldnames['county']) or '').strip()
-                raw_value = (row.get(fieldnames['value']) or '').strip()
-                raw_target = (row.get(fieldnames['target']) or '').strip()
-
-                if not county:
-                    errors.append(f'Row {row_number}: missing county.')
-                    continue
-                try:
-                    value = float(raw_value)
-                    target = float(raw_target)
-                except ValueError:
-                    errors.append(f'Row {row_number} ({county}): value/target must be numeric.')
-                    continue
-
-                existing = CountyScore.objects.filter(
-                    county=county, sector=sector, quarter=quarter, year=year
-                ).first()
-                if existing and existing.is_signed:
-                    target = existing.target
-                    locked_notes.append(
-                        f'Row {row_number} ({county}): target is locked (signed '
-                        f'{existing.signed_at:%Y-%m-%d}) -- kept at {target}, only value updated.'
-                    )
-
-                score, status = compute_score_and_status(value, target)
-                _, was_created = CountyScore.objects.update_or_create(
-                    county=county,
-                    sector=sector,
-                    quarter=quarter,
-                    year=year,
-                    defaults={
-                        'value': value,
-                        'target': target,
-                        'score': score,
-                        'status': status,
-                        'data_source': data_source,
-                    },
-                )
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
-
-    return {'created': created, 'updated': updated, 'errors': errors, 'locked_notes': locked_notes}
-
-
-def _get_available_periods():
-    return list(
-        CountyScore.objects.order_by('-year', '-quarter')
-        .values_list('year', 'quarter')
-        .distinct()
-    )
 
 
 def _resolve_period(request, periods):
@@ -173,106 +68,191 @@ def _resolve_period(request, periods):
     return periods[0]
 
 
-def dashboard_view(request):
-    periods = _get_available_periods()
-    year, quarter = _resolve_period(request, periods)
-
-    scores = []
-    if year is not None:
-        scores = list(
-            CountyScore.objects.filter(year=year, quarter=quarter)
-            .select_related('data_source')
-            .order_by('county', 'sector')
+def promise_registry_view(request):
+    # Shows whatever counties actually have logged promises, not just
+    # PILOT_COUNTIES -- procurement ingestion can cover any county with
+    # awarded contracts (see update_procurement_promises --all-counties),
+    # so this page needs to reflect that rather than a fixed 5-county list.
+    promise_stats = {
+        row['county']: row
+        for row in (
+            Promise.objects.exclude(county='')
+            .values('county')
+            .annotate(
+                count=Count('id'),
+                delivered=Count('id', filter=Q(status='delivered')),
+                broken=Count('id', filter=Q(status='broken')),
+            )
         )
+    }
+    # A county can be active on PPRA (publishing tenders) with nothing
+    # awarded yet, so it'd have zero promises and be invisible above --
+    # folding in CountyProcurementActivity surfaces it anyway, flagged,
+    # instead of it looking identical to a county with no activity at all.
+    activity_stats = {a.county: a for a in CountyProcurementActivity.objects.filter(year=datetime.now().year)}
 
-    for row in scores:
-        row.perception = _get_perception(row.county, row.sector)
-        row.remediation_actions = (
-            list(row.actions.order_by('deadline')) if row.status == 'red' else []
-        )
+    counties = []
+    for county in set(promise_stats) | set(activity_stats):
+        stats = promise_stats.get(county, {'count': 0, 'delivered': 0, 'broken': 0})
+        activity = activity_stats.get(county)
+        counties.append({
+            'county': county,
+            'count': stats['count'],
+            'delivered': stats['delivered'],
+            'broken': stats['broken'],
+            'tenders_published': activity.tenders_published if activity else None,
+            'has_award_gap': activity.has_award_gap if activity else False,
+        })
+    # Most promises first -- that's where the story is; alphabetical buries
+    # West Pokot's 335 promises at the same visual weight as Kisumu's 1.
+    counties.sort(key=lambda row: (-row['count'], row['county']))
 
-    counties = sorted({s.county for s in scores})
-    county_sections = [
-        {'county': county, 'rows': [s for s in scores if s.county == county]}
-        for county in counties
-    ]
-
-    return render(request, 'dashboard.html', {
-        'county_sections': county_sections,
-        'periods': periods,
-        'year': year,
-        'quarter': quarter,
+    return render(request, 'promise_registry.html', {
+        'counties': counties,
+        'counties_with_promises': sum(1 for row in counties if row['count'] > 0),
+        'counties_with_gap': sum(1 for row in counties if row['has_award_gap']),
+        'total_counties': len(counties),
     })
 
 
-def rankings_view(request):
-    periods = _get_available_periods()
-    year, quarter = _resolve_period(request, periods)
+def _attach_latest_verification(promises):
+    for p in promises:
+        # PromiseVerification.Meta.ordering is already -year, -quarter, so the
+        # prefetched cache is already in the right order -- .first() here
+        # would issue a fresh query per promise and defeat prefetch_related.
+        verifications = list(p.verifications.all())
+        p.latest_verification = verifications[0] if verifications else None
+    return promises
 
-    county_scores = {}
-    if year is not None:
-        for s in CountyScore.objects.filter(year=year, quarter=quarter):
-            county_scores.setdefault(s.county, []).append(s.score)
 
-    rankings = sorted(
-        (
-            {
-                'county': county,
-                'average_score': sum(scores) / len(scores),
-                'sector_count': len(scores),
-            }
-            for county, scores in county_scores.items()
-        ),
-        key=lambda r: r['average_score'],
-        reverse=True,
+def county_promises_view(request, county):
+    all_promises = _attach_latest_verification(list(
+        Promise.objects.filter(county=county)
+        .select_related('source')
+        .prefetch_related('verifications')
+        .annotate(comment_count=Count('comments', filter=Q(comments__is_hidden=False)))
+        .order_by('category', '-date_made')
+    ))
+
+    # Lets the brief page's stat tiles link straight to "just the broken
+    # ones" etc. -- filters the table only; the rollup below still reflects
+    # every promise so it stays a full picture regardless of this filter.
+    status_filter = request.GET.get('status') or ''
+    promises = [p for p in all_promises if p.status == status_filter] if status_filter else all_promises
+
+    periods = list(
+        PromiseVerification.objects.filter(promise__county=county)
+        .order_by('-year', '-quarter')
+        .values_list('year', 'quarter')
+        .distinct()
     )
-    for position, row in enumerate(rankings, start=1):
-        row['rank'] = position
+    year, quarter = _resolve_period(request, periods)
 
-    return render(request, 'rankings.html', {
-        'rankings': rankings,
+    rollup = []
+    if year is not None:
+        category_scores = []
+        for p in all_promises:
+            match = next((v for v in p.verifications.all() if v.year == year and v.quarter == quarter), None)
+            category_scores.append((p.category, match.score if match else None))
+        rollup = aggregate_promise_scores(category_scores)
+
+    return render(request, 'county_promises.html', {
+        'county': county,
+        'promises': promises,
+        'status_filter': status_filter,
+        'rollup': rollup,
         'periods': periods,
         'year': year,
         'quarter': quarter,
     })
 
 
-def county_detail_view(request, county):
-    periods = _get_available_periods()
-    year, quarter = _resolve_period(request, periods)
+def _build_comment_tree(promise):
+    """Attach .child_comments to each comment so the template can render
+    replies recursively, without N+1 queries per level."""
+    comments = list(promise.comments.filter(is_hidden=False).order_by('posted_at'))
+    by_parent = {}
+    for c in comments:
+        by_parent.setdefault(c.parent_id, []).append(c)
+    for c in comments:
+        c.child_comments = by_parent.get(c.id, [])
+    return by_parent.get(None, [])
 
-    rows = []
-    if year is not None:
-        rows = list(
-            CountyScore.objects.filter(county=county, year=year, quarter=quarter)
-            .select_related('data_source')
-            .order_by('sector')
-        )
 
-    for row in rows:
-        row.perception = _get_perception(county, row.sector)
-        row.remediation_actions = (
-            list(row.actions.order_by('deadline')) if row.status == 'red' else []
-        )
+def promise_detail_view(request, county, promise_id):
+    promise = get_object_or_404(
+        Promise.objects.select_related('source').prefetch_related('verifications'),
+        pk=promise_id, county=county,
+    )
 
-    return render(request, 'county_detail.html', {
+    if request.method == 'POST':
+        form = PromiseCommentForm(request.POST)
+        if form.is_valid():
+            comment = form.save(commit=False)
+            comment.promise = promise
+            parent_id = request.POST.get('parent_id')
+            if parent_id:
+                # Only allow replying to a comment that's actually on this
+                # promise -- ignore/drop a tampered parent_id rather than
+                # letting a reply attach to an unrelated promise's thread.
+                comment.parent = promise.comments.filter(pk=parent_id).first()
+            comment.save()
+            return redirect('promise_detail', county=county, promise_id=promise_id)
+    else:
+        form = PromiseCommentForm()
+
+    return render(request, 'promise_detail.html', {
         'county': county,
-        'rows': rows,
-        'periods': periods,
-        'year': year,
-        'quarter': quarter,
+        'promise': promise,
+        'verifications': list(promise.verifications.all()),
+        'top_comments': _build_comment_tree(promise),
+        'comment_count': promise.comments.filter(is_hidden=False).count(),
+        'form': form,
+    })
+
+
+def county_brief_view(request, county):
+    """A standalone, shareable summary -- headline numbers and the promises
+    that most need attention up front -- meant to be sent as a link to a
+    journalist or CSO rather than requiring them to dig through the full
+    table. This is a live current-state snapshot (latest status per promise),
+    not scoped to one quarter, so there's nothing to pick before it's useful."""
+    promises = _attach_latest_verification(list(
+        Promise.objects.filter(county=county)
+        .select_related('source')
+        .prefetch_related('verifications')
+    ))
+
+    status_counts = Counter(p.status for p in promises)
+    score_counts = Counter(p.latest_verification.score for p in promises if p.latest_verification)
+    verified_count = sum(score_counts.values())
+
+    flagged = sorted(
+        (p for p in promises if p.status == 'broken' or (p.latest_verification and p.latest_verification.score == 'red')),
+        key=lambda p: (p.stated_deadline is None, p.stated_deadline),
+    )
+
+    activity = CountyProcurementActivity.objects.filter(county=county, year=datetime.now().year).first()
+
+    return render(request, 'county_brief.html', {
+        'county': county,
+        'total': len(promises),
+        'verified_count': verified_count,
+        'status_counts': status_counts,
+        'score_counts': score_counts,
+        'flagged': flagged,
+        'activity': activity,
+        'generated_at': timezone.now(),
     })
 
 
 def _get_perception(county, sector):
     feedback = PublicFeedback.objects.filter(county=county, sector=sector)
-    aggregate = feedback.aggregate(average_rating=Avg('rating'), count=Count('id'))
-    if not aggregate['count']:
+    count = feedback.count()
+    if not count:
         return None
     return {
-        'average_rating': aggregate['average_rating'],
-        'count': aggregate['count'],
-        'status': compute_perception_status(aggregate['average_rating']),
+        'count': count,
         'recent_comments': list(feedback.order_by('-submitted_at')[:3]),
     }
 
@@ -283,14 +263,6 @@ def _ussd_pick(options, raw_choice):
     except (TypeError, ValueError):
         return None
     return options[index] if 0 <= index < len(options) else None
-
-
-def _ussd_pick_rating(raw_choice):
-    try:
-        value = int(raw_choice)
-    except (TypeError, ValueError):
-        return None
-    return value if 1 <= value <= 5 else None
 
 
 @csrf_exempt
@@ -334,24 +306,16 @@ def ussd_feedback_view(request):
         return respond('END', 'Invalid sector selection. Please dial in again.')
 
     if len(steps) == 2:
-        return respond('CON', 'Rate this service from 1 (worst) to 5 (best):')
+        return respond('CON', 'Share your feedback as a short comment:')
 
-    rating = _ussd_pick_rating(steps[2])
-    if rating is None:
-        return respond('END', 'Invalid rating. Please dial in again.')
-
-    if len(steps) == 3:
-        return respond('CON', 'Optional: reply with a short comment, or 0 to skip.')
-
-    comment = steps[3].strip()
-    if comment == '0':
-        comment = ''
+    comment = steps[2].strip()
+    if not comment:
+        return respond('END', 'Comment cannot be empty. Please dial in again.')
 
     PublicFeedback.objects.create(
         name=f'USSD {phone_number}'.strip() if phone_number else 'USSD caller',
         county=county,
         sector=sector,
-        rating=rating,
-        comment=comment or 'No comment provided.',
+        comment=comment,
     )
     return respond('END', 'Thank you. Your feedback has been recorded.')
