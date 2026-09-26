@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Promise Registry &middot; KPPAS{% endblock %}
+{% block title %}Promise Registry &middot; Angazia Kenya{% endblock %}
 
 {% block extra_style %}
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 20px; }
@@ -9,13 +9,17 @@
   .stat-tile-amber { background: var(--warning-bg); border-color: transparent; }
   .stat-tile-amber .stat-value { color: var(--warning-ink); }
 
-  .filter-row { margin-bottom: 14px; }
-  .filter-row input { font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); color: var(--ink); width: 100%; max-width: 280px; }
-  tr.no-match { display: none; }
-
   .activity-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
   .activity-chip.gap { color: var(--warning-ink); background: var(--warning-bg); }
   .activity-chip.active { color: var(--ink-secondary); background: var(--empty-bg); }
+
+  .national-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  .national-card h2 { margin: 0 0 4px; }
+  .national-card .links a { margin-left: 16px; }
+
+  .hero-stat { margin: 6px 0 28px; }
+  .hero-stat-value { display: block; font-size: 3rem; font-weight: 700; color: var(--link); line-height: 1; }
+  .hero-stat-label { display: block; margin-top: 6px; color: var(--ink-secondary); font-size: 1rem; }
 {% endblock %}
 
 {% block content %}
@@ -25,6 +29,29 @@
     notices, Hansard statements, budget documents) and tracked to delivery independently
     of the official reporting calendar.
   </p>
+
+  {% if total_promises %}
+    <div class="hero-stat">
+      <span class="hero-stat-value">{{ total_promises }}</span>
+      <span class="hero-stat-label">promises tracked across {{ counties_with_promises }} counties{% if national_row %} and national government{% endif %}</span>
+    </div>
+  {% endif %}
+
+  {% if national_row %}
+    <div class="card national-card">
+      <div>
+        <h2>National government</h2>
+        <p class="subtitle" style="margin:0;">
+          {{ national_row.count }} promises logged from national ministries and agencies &middot;
+          {{ national_row.delivered }} delivered &middot; {{ national_row.broken }} broken
+        </p>
+      </div>
+      <div class="links">
+        <a href="{% url 'county_promises' 'national' %}">View promises &rarr;</a>
+        <a href="{% url 'county_brief' 'national' %}">Brief &rarr;</a>
+      </div>
+    </div>
+  {% endif %}
 
   <div class="stat-grid">
     <div class="card stat-tile">
@@ -47,18 +74,21 @@
     </div>
     <div class="table-scroll">
       <table id="county_table">
+        <thead>
         <tr>
-          <th>County</th>
-          <th>Logged promises</th>
+          <th data-sort-type="text">County</th>
+          <th data-sort-type="number">Logged promises</th>
           <th>Verified outcomes</th>
           <th>PPRA activity</th>
           <th></th>
         </tr>
+        </thead>
+        <tbody>
         {% for row in counties %}
           <tr data-county="{{ row.county|lower }}">
-            <td><a href="{% url 'county_promises' row.county %}">{{ row.county }}</a></td>
-            <td>{{ row.count }}</td>
-            <td>
+            <td data-label="County" data-sort="{{ row.county|lower }}"><a href="{% url 'county_promises' row.county %}">{{ row.county }}</a></td>
+            <td data-label="Logged promises" data-sort="{{ row.count }}">{{ row.count }}</td>
+            <td data-label="Verified outcomes">
               {% if row.delivered or row.broken %}
                 {% if row.delivered %}<span class="status-chip status-green"><span class="dot"></span>{{ row.delivered }} delivered</span>{% endif %}
                 {% if row.broken %}<span class="status-chip status-red"><span class="dot"></span>{{ row.broken }} broken</span>{% endif %}
@@ -66,10 +96,10 @@
                 <span class="badge">none verified yet</span>
               {% endif %}
             </td>
-            <td>
+            <td data-label="PPRA activity">
               {% if row.has_award_gap %}
                 <span class="activity-chip gap" title="Tenders are being published but none have reached the award stage yet -- worth a follow-up question, not necessarily a problem.">
-                  &#9888; {{ row.tenders_published }} tenders, 0 awarded
+                  {% include "_icon_warning.html" %} {{ row.tenders_published }} tenders, 0 awarded
                 </span>
               {% elif row.tenders_published %}
                 <span class="activity-chip active">{{ row.tenders_published }} tenders published</span>
@@ -77,9 +107,17 @@
                 <span class="badge">no PPRA data</span>
               {% endif %}
             </td>
-            <td><a href="{% url 'county_brief' row.county %}">Brief &rarr;</a></td>
+            <td data-label=""><a href="{% url 'county_brief' row.county %}">Brief &rarr;</a></td>
           </tr>
+        {% empty %}
+          <tr><td colspan="5" style="display:block; text-align:left;">
+            <div class="empty-state">
+              {% include "_icon_empty.html" %}
+              <p>No counties tracked yet &mdash; run the procurement ingestion command to populate the registry.</p>
+            </div>
+          </td></tr>
         {% endfor %}
+        </tbody>
       </table>
     </div>
   </div>
@@ -91,5 +129,6 @@
         row.classList.toggle('no-match', !!q && row.dataset.county.indexOf(q) === -1);
       });
     });
+    makeSortable('county_table');
   </script>
 {% endblock %}

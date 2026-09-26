@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Data Access &middot; KPPAS{% endblock %}
+{% block title %}Data Access &middot; Angazia Kenya{% endblock %}
 
 {% block content %}
   <h1>Data &amp; API access</h1>
@@ -8,6 +8,8 @@
   <div class="card">
     <p>The registry itself stays free to browse on this site: the <a href="{% url 'promise_registry' %}">promise registry</a> and each county's page are open to everyone.</p>
     <p>Programmatic/bulk access to the underlying dataset via API is a paid, licensed product and isn't publicly available.</p>
-    <p>To request access, contact <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>.</p>
+    <p>To request access, contact <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>. Once approved, you'll be issued an API key to
+    send as an <code>Authorization: Bearer &lt;key&gt;</code> header (or an <code>?api_key=</code> query parameter) on requests to
+    <code>/api/open-data/</code>. An optional <code>?county=</code> parameter filters results to one county (or to national-level promises with <code>?county=</code> left empty).</p>
   </div>
 {% endblock %}

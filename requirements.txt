@@ -1,7 +1,6 @@
-Django>=4.0
+Django>=4.2,<5.0
 psycopg2-binary
-apache-airflow
-pandas
 requests
-beautifulsoup4
 python-dotenv
+gunicorn
+whitenoise

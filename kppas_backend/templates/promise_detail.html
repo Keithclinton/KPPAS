@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ promise.text|truncatechars:60 }} &middot; KPPAS{% endblock %}
+{% block title %}{{ promise.text|truncatechars:60 }} &middot; Angazia Kenya{% endblock %}
 
 {% block extra_style %}
   .comment { padding: 12px 0; border-top: 1px solid var(--grid); }
@@ -16,7 +16,7 @@
 {% endblock %}
 
 {% block content %}
-  <a class="back-link" href="{% url 'county_promises' county %}">&larr; {{ county }} promises</a>
+  <a class="back-link" href="{% url 'county_promises' county %}">&larr; {{ county_label }} promises</a>
 
   <div class="card">
     <span class="badge">{{ promise.category }}</span>
@@ -34,7 +34,7 @@
 
     <h1>{{ promise.text }}</h1>
     <p class="subtitle">
-      {{ promise.responsible_actor }} &middot; {{ county }} &middot; made {{ promise.date_made }}
+      {{ promise.responsible_actor }} &middot; {{ county_label }} &middot; made {{ promise.date_made }}
       {% if promise.stated_deadline %} &middot; due {{ promise.stated_deadline }}{% elif promise.deadline_text %} &middot; due {{ promise.deadline_text }}{% endif %}
     </p>
     <p>

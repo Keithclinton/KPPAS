@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ county }} Promises &middot; KPPAS{% endblock %}
+{% block title %}{{ county_label }} Promises &middot; Angazia Kenya{% endblock %}
 
 {% block extra_style %}
   .period-form { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 0.9rem; }
@@ -8,14 +8,16 @@
 
 {% block content %}
   <a class="back-link" href="{% url 'promise_registry' %}">&larr; All counties</a>
-  <h1>{{ county }} &mdash; Promise Registry</h1>
+  <h1>{{ county_label }} &mdash; Promise Registry</h1>
   <p class="subtitle">
     Each entry is a commitment logged from a public source, not a citizen report.
     Status reflects what's verifiable from that source alone until a quarterly
     verification adds a green/amber/red score.
     <a href="{% url 'county_brief' county %}">View shareable brief &rarr;</a>
-    &middot;
-    <a href="{% url 'feedback' %}?county={{ county }}">Rate a service in {{ county }} &rarr;</a>
+    {% if county != 'national' %}
+      &middot;
+      <a href="{% url 'feedback' %}?county={{ county }}">Rate a service in {{ county_label }} &rarr;</a>
+    {% endif %}
   </p>
 
   <div class="card">
@@ -36,26 +38,35 @@
       </form>
       <div class="table-scroll">
         <table>
+          <thead>
           <tr>
             <th>Category</th>
+            <th>Distribution</th>
             <th>Green</th>
             <th>Amber</th>
             <th>Red</th>
             <th>Not yet verified</th>
           </tr>
+          </thead>
+          <tbody>
           {% for row in rollup %}
             <tr>
-              <td>{{ row.category }}</td>
-              <td>{{ row.green }}</td>
-              <td>{{ row.amber }}</td>
-              <td>{{ row.red }}</td>
-              <td>{{ row.unverified }}</td>
+              <td data-label="Category">{{ row.category }}</td>
+              <td data-label="Distribution">{% include "_score_bar.html" with green=row.green amber=row.amber red=row.red unverified=row.unverified total=row.total %}</td>
+              <td data-label="Green">{{ row.green }}</td>
+              <td data-label="Amber">{{ row.amber }}</td>
+              <td data-label="Red">{{ row.red }}</td>
+              <td data-label="Not yet verified">{{ row.unverified }}</td>
             </tr>
           {% endfor %}
+          </tbody>
         </table>
       </div>
     {% else %}
-      <p>No quarterly verifications logged yet &mdash; promises below are collected but not yet scored. Verification happens in the admin, per promise, each quarter.</p>
+      <div class="empty-state">
+        {% include "_icon_empty.html" %}
+        <p>No quarterly verifications logged yet &mdash; promises below are collected but not yet scored. Verification happens in the admin, per promise, each quarter.</p>
+      </div>
     {% endif %}
   </div>
 
@@ -75,29 +86,35 @@
       </p>
     {% endif %}
     {% if promises %}
+      <div class="filter-row">
+        <input type="text" id="promise_filter" placeholder="Filter by category, actor, or keyword&hellip;" autocomplete="off">
+      </div>
       <div class="table-scroll">
-        <table>
+        <table id="promises_table">
+          <thead>
           <tr>
-            <th>Category</th>
+            <th data-sort-type="text">Category</th>
             <th>Promise</th>
-            <th>Responsible actor</th>
-            <th>Date made</th>
-            <th>Deadline</th>
-            <th>Status</th>
+            <th data-sort-type="text">Responsible actor</th>
+            <th data-sort-type="text">Date made</th>
+            <th data-sort-type="text">Deadline</th>
+            <th data-sort-type="text">Status</th>
             <th>Latest verification</th>
             <th>Source</th>
           </tr>
+          </thead>
+          <tbody>
           {% for p in promises %}
-            <tr>
-              <td>{{ p.category }}</td>
-              <td>
+            <tr data-search="{{ p.category|lower }} {{ p.responsible_actor|lower }} {{ p.text|lower }}">
+              <td data-label="Category" data-sort="{{ p.category|lower }}">{{ p.category }}</td>
+              <td data-label="Promise">
                 <a href="{% url 'promise_detail' county p.id %}">{{ p.text }}</a>
-                <br><span class="badge">&#128172; {{ p.comment_count }}</span>
+                <br><span class="badge">{% include "_icon_comment.html" %} {{ p.comment_count }} comment{{ p.comment_count|pluralize }}</span>
               </td>
-              <td>{{ p.responsible_actor }}</td>
-              <td>{{ p.date_made }}</td>
-              <td>{{ p.stated_deadline|default:p.deadline_text|default:"-" }}</td>
-              <td>
+              <td data-label="Responsible actor" data-sort="{{ p.responsible_actor|lower }}">{{ p.responsible_actor }}</td>
+              <td data-label="Date made" data-sort="{{ p.date_made|date:'Y-m-d' }}">{{ p.date_made }}</td>
+              <td data-label="Deadline" data-sort="{% if p.stated_deadline %}{{ p.stated_deadline|date:'Y-m-d' }}{% else %}9999-99-99{% endif %}">{{ p.stated_deadline|default:p.deadline_text|default:"-" }}</td>
+              <td data-label="Status" data-sort="{{ p.status }}">
                 {% if p.status == 'delivered' %}
                   <span class="status-chip status-green"><span class="dot"></span>Delivered</span>
                 {% elif p.status == 'broken' %}
@@ -110,7 +127,7 @@
                   <span class="badge">Pending</span>
                 {% endif %}
               </td>
-              <td>
+              <td data-label="Latest verification">
                 {% if p.latest_verification %}
                   <span class="status-chip status-{{ p.latest_verification.score }}">
                     <span class="dot"></span>{{ p.latest_verification.quarter }} {{ p.latest_verification.year }}
@@ -119,7 +136,7 @@
                   <span class="badge">not yet verified</span>
                 {% endif %}
               </td>
-              <td>
+              <td data-label="Source">
                 {% if p.source.url %}
                   <a href="{{ p.source.url }}">{{ p.source.title }}</a>
                 {% else %}
@@ -129,10 +146,27 @@
               </td>
             </tr>
           {% endfor %}
+          </tbody>
         </table>
       </div>
     {% else %}
-      <p>{% if status_filter %}No promises match this filter.{% else %}No promises logged yet for {{ county }}.{% endif %}</p>
+      <div class="empty-state">
+        {% include "_icon_empty.html" %}
+        <p>{% if status_filter %}No promises match this filter.{% else %}No promises logged yet for {{ county_label }}.{% endif %}</p>
+      </div>
     {% endif %}
   </div>
+
+  <script>
+    var promiseFilter = document.getElementById('promise_filter');
+    if (promiseFilter) {
+      promiseFilter.addEventListener('input', function (e) {
+        var q = e.target.value.trim().toLowerCase();
+        document.querySelectorAll('#promises_table tbody tr[data-search]').forEach(function (row) {
+          row.classList.toggle('no-match', !!q && row.dataset.search.indexOf(q) === -1);
+        });
+      });
+    }
+    makeSortable('promises_table');
+  </script>
 {% endblock %}

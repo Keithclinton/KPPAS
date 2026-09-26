@@ -1,9 +1,13 @@
-<!DOCTYPE html>
+{% load static %}<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}KPPAS{% endblock %}</title>
+<link rel="icon" type="image/png" href="{% static 'kppas_backend/favicon.png' %}">
+<title>{% block title %}Angazia Kenya{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     color-scheme: light;
@@ -14,7 +18,7 @@
     --ink-muted: #898781;
     --border: rgba(11, 11, 11, 0.10);
     --grid: #e1e0d9;
-    --link: #2a78d6;
+    --link: #206e4f;
     --good: #0ca30c;
     --warning-ink: #92620a;
     --warning: #fab219;
@@ -23,9 +27,15 @@
     --warning-bg: #fdf1da;
     --critical-bg: #fae2e2;
     --empty-bg: #f0efec;
+    --brand-dark: #0d2b1f;
+    --brand-dark-ink: #f3ede1;
+    --brand-dark-ink-muted: #b9c9c0;
+    --brand-gold: #ea9f20;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
+    /* :not([data-theme="light"]) lets the manual toggle below override this
+       when someone's OS prefers dark but they've asked this site for light. */
+    :root:not([data-theme="light"]) {
       color-scheme: dark;
       --surface: #1a1a19;
       --page: #0d0d0d;
@@ -34,7 +44,7 @@
       --ink-muted: #898781;
       --border: rgba(255, 255, 255, 0.10);
       --grid: #2c2c2a;
-      --link: #3987e5;
+      --link: #33b17f;
       --good: #0ca30c;
       --warning-ink: #fab219;
       --warning: #fab219;
@@ -43,7 +53,36 @@
       --warning-bg: rgba(250, 178, 25, 0.16);
       --critical-bg: rgba(208, 59, 59, 0.20);
       --empty-bg: rgba(255, 255, 255, 0.05);
+      --brand-dark: #091d15;
+      --brand-dark-ink: #f3ede1;
+      --brand-dark-ink-muted: #b9c9c0;
+      --brand-gold: #f0ac30;
     }
+  }
+  /* Same dark palette, forced on regardless of OS preference -- for
+     someone whose OS is light but who picked dark via the toggle. */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface: #1a1a19;
+    --page: #0d0d0d;
+    --ink: #ffffff;
+    --ink-secondary: #c3c2b7;
+    --ink-muted: #898781;
+    --border: rgba(255, 255, 255, 0.10);
+    --grid: #2c2c2a;
+    --link: #33b17f;
+    --good: #0ca30c;
+    --warning-ink: #fab219;
+    --warning: #fab219;
+    --critical: #e66767;
+    --good-bg: rgba(12, 163, 12, 0.16);
+    --warning-bg: rgba(250, 178, 25, 0.16);
+    --critical-bg: rgba(208, 59, 59, 0.20);
+    --empty-bg: rgba(255, 255, 255, 0.05);
+    --brand-dark: #091d15;
+    --brand-dark-ink: #f3ede1;
+    --brand-dark-ink-muted: #b9c9c0;
+    --brand-gold: #f0ac30;
   }
   * { box-sizing: border-box; }
   body {
@@ -54,9 +93,9 @@
     line-height: 1.45;
   }
   header.site {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 14px 24px;
+    background: var(--brand-dark);
+    border-bottom: 3px solid var(--brand-gold);
+    padding: 10px 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -64,26 +103,48 @@
     gap: 10px;
   }
   header.site .brand {
-    font-weight: 700;
-    font-size: 1.05rem;
+    display: flex;
+    align-items: center;
     text-decoration: none;
-    color: var(--ink);
-    letter-spacing: 0.01em;
+  }
+  header.site .brand img {
+    height: 40px;
+    display: block;
   }
   header.site nav a {
-    color: var(--ink-secondary);
+    color: var(--brand-dark-ink-muted);
     text-decoration: none;
     margin-left: 20px;
     font-size: 0.9rem;
   }
-  header.site nav a:hover { color: var(--link); }
+  header.site nav a:hover { color: var(--brand-gold); }
+  .theme-toggle {
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 999px;
+    color: var(--brand-dark-ink-muted);
+    font: inherit;
+    font-size: 0.82rem;
+    padding: 4px 12px;
+    margin-left: 20px;
+    cursor: pointer;
+  }
+  .theme-toggle:hover { color: var(--brand-gold); border-color: var(--brand-gold); }
   main {
     max-width: 1080px;
     margin: 0 auto;
     padding: 28px 24px 60px;
   }
-  h1 { font-size: 1.35rem; margin: 0 0 4px; }
-  h2 { font-size: 1.1rem; margin: 0 0 12px; }
+  h1, h2, .stat-value, .hero-stat-value {
+    font-family: 'Lora', Georgia, 'Times New Roman', serif;
+  }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 {
+    font-size: 1.15rem;
+    margin: 0 0 14px;
+    padding-left: 12px;
+    border-left: 3px solid var(--link);
+  }
   p.subtitle { color: var(--ink-secondary); margin: 0 0 20px; font-size: 0.92rem; max-width: 62ch; }
   .card {
     background: var(--surface);
@@ -94,6 +155,8 @@
   }
   .table-scroll { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  .table-scroll tbody tr { transition: background-color 0.1s ease; }
+  .table-scroll tbody tr:hover { background: var(--empty-bg); }
   th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--grid); vertical-align: top; }
   th {
     color: var(--ink-muted);
@@ -168,21 +231,190 @@
     margin-bottom: 16px;
   }
 
+  /* Green/amber/red/unverified breakdown, used for per-category rollups and
+     county-brief summaries alike -- see _score_bar.html. */
+  .score-bar {
+    display: flex;
+    height: 8px;
+    width: 100%;
+    min-width: 70px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--empty-bg);
+  }
+  .score-bar-empty { background: var(--empty-bg); }
+  .score-bar .seg { display: block; height: 100%; flex: 0 0 auto; }
+  .score-bar .seg-green { background: var(--good); }
+  .score-bar .seg-amber { background: var(--warning); }
+  .score-bar .seg-red { background: var(--critical); }
+  .score-bar .seg-unverified { background: var(--border); }
+
+  .empty-state {
+    text-align: center;
+    padding: 36px 20px;
+    color: var(--ink-muted);
+  }
+  .empty-state p { margin: 0 auto; max-width: 46ch; }
+  .icon { flex: none; }
+  .empty-state .icon-empty { display: block; margin: 0 auto 10px; opacity: 0.6; }
+  .icon-warning, .icon-comment { vertical-align: -1px; margin-right: 1px; }
+
+  /* Row-filter inputs (county filter, promise filter) share this: hide
+     whatever doesn't match rather than removing it, so no re-render needed. */
+  tr.no-match { display: none !important; }
+  .filter-row { margin-bottom: 14px; }
+  .filter-row input { font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); color: var(--ink); width: 100%; max-width: 320px; }
+
+  th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  th.sortable:hover { color: var(--ink-secondary); }
+  th.sortable .sort-arrow { display: inline-block; width: 0.9em; opacity: 0.6; }
+
+  /* Small screens: tables become stacked cards instead of a horizontal
+     scroll -- promise tables have 6-8 columns, unusable on a phone otherwise. */
+  @media (max-width: 700px) {
+    .table-scroll table, .table-scroll thead, .table-scroll tbody,
+    .table-scroll th, .table-scroll td, .table-scroll tr {
+      display: block;
+    }
+    .table-scroll thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .table-scroll tr {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 4px 14px;
+      margin-bottom: 12px;
+    }
+    .table-scroll td {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+      text-align: right;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--grid);
+      white-space: normal;
+    }
+    .table-scroll td:last-child { border-bottom: none; }
+    .table-scroll td::before {
+      content: attr(data-label);
+      font-weight: 600;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-muted);
+      text-align: left;
+      flex: none;
+      padding-top: 2px;
+    }
+    .table-scroll td[data-label=""]::before, .table-scroll td:not([data-label])::before { content: none; }
+  }
+
+  @media print {
+    header.site, .back-link, .filter-row, .period-form, .comment-form,
+    .no-print { display: none !important; }
+    body { background: #fff; color: #000; }
+    .card { border: 1px solid #ccc; box-shadow: none; break-inside: avoid; }
+    main { max-width: 100%; padding: 0 12px; }
+    a { color: #000; text-decoration: underline; }
+  }
+
   {% block extra_style %}{% endblock %}
 </style>
+<script>
+  // Applied before body paint so a stored preference doesn't flash the
+  // wrong theme on load; CSS above reads the same data-theme attribute.
+  (function () {
+    try {
+      var stored = localStorage.getItem('theme');
+      if (stored === 'dark' || stored === 'light') {
+        document.documentElement.setAttribute('data-theme', stored);
+      }
+    } catch (e) {}
+  })();
+</script>
 </head>
 <body>
 <header class="site">
-  <a class="brand" href="{% url 'promise_registry' %}">KPPAS &middot; Promise Registry</a>
+  <a class="brand" href="{% url 'promise_registry' %}">
+    <img src="{% static 'kppas_backend/logo.png' %}" alt="Angazia Kenya &middot; Promise Registry">
+  </a>
   <nav>
     <a href="{% url 'promise_registry' %}">Promises</a>
     <a href="{% url 'feedback' %}">Give feedback</a>
     <a href="{% url 'data_access' %}">Data access</a>
     <a href="/admin/">Admin</a>
+    <button type="button" id="theme_toggle" class="theme-toggle" aria-label="Toggle dark mode">Dark mode</button>
   </nav>
 </header>
 <main>
 {% block content %}{% endblock %}
 </main>
+<script>
+  (function () {
+    var btn = document.getElementById('theme_toggle');
+
+    function isDark() {
+      var attr = document.documentElement.getAttribute('data-theme');
+      if (attr === 'dark') return true;
+      if (attr === 'light') return false;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    function refresh() {
+      btn.textContent = isDark() ? 'Light mode' : 'Dark mode';
+    }
+    refresh();
+    btn.addEventListener('click', function () {
+      var next = isDark() ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+      refresh();
+    });
+  })();
+
+  // Generic click-to-sort for any table built as
+  // <table id="..."><thead><tr><th data-sort-type="text|number">...
+  // and body rows with a matching data-sort value on each <td>. Shared by
+  // every sortable table on the site instead of writing per-page sort code.
+  function makeSortable(tableId) {
+    var table = document.getElementById(tableId);
+    if (!table) return;
+    var headerRow = table.querySelector('thead tr');
+    var tbody = table.querySelector('tbody');
+    if (!headerRow || !tbody) return;
+    var headers = Array.prototype.filter.call(headerRow.children, function (th) {
+      return th.dataset.sortType;
+    });
+
+    headers.forEach(function (th) {
+      th.classList.add('sortable');
+      var arrow = document.createElement('span');
+      arrow.className = 'sort-arrow';
+      th.appendChild(arrow);
+
+      th.addEventListener('click', function () {
+        var colIndex = Array.prototype.indexOf.call(headerRow.children, th);
+        var type = th.dataset.sortType;
+        var dir = th.dataset.dir === 'asc' ? 'desc' : 'asc';
+        headers.forEach(function (h) {
+          delete h.dataset.dir;
+          h.querySelector('.sort-arrow').textContent = '';
+        });
+        th.dataset.dir = dir;
+        arrow.textContent = dir === 'asc' ? '▲' : '▼';
+
+        var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+        rows.sort(function (a, b) {
+          var ac = a.children[colIndex], bc = b.children[colIndex];
+          if (!ac || !bc) return 0;
+          var av = ac.dataset.sort || '', bv = bc.dataset.sort || '';
+          var cmp = type === 'number'
+            ? (parseFloat(av) || 0) - (parseFloat(bv) || 0)
+            : av.localeCompare(bv);
+          return dir === 'asc' ? cmp : -cmp;
+        });
+        rows.forEach(function (row) { tbody.appendChild(row); });
+      });
+    });
+  }
+</script>
 </body>
 </html>

@@ -1,0 +1,10 @@
+{% if total %}
+  <div class="score-bar" title="{{ green }} green &middot; {{ amber }} amber &middot; {{ red }} red &middot; {{ unverified }} not yet verified" role="img" aria-label="{{ green }} green, {{ amber }} amber, {{ red }} red, {{ unverified }} not yet verified">
+    {% if green %}<span class="seg seg-green" style="width: {% widthratio green total 100 %}%"></span>{% endif %}
+    {% if amber %}<span class="seg seg-amber" style="width: {% widthratio amber total 100 %}%"></span>{% endif %}
+    {% if red %}<span class="seg seg-red" style="width: {% widthratio red total 100 %}%"></span>{% endif %}
+    {% if unverified %}<span class="seg seg-unverified" style="width: {% widthratio unverified total 100 %}%"></span>{% endif %}
+  </div>
+{% else %}
+  <div class="score-bar score-bar-empty" title="No promises in this category yet"></div>
+{% endif %}

@@ -5,6 +5,11 @@ from .models.public_feedback import PublicFeedback
 from .models.promise_registry import (
     PromiseSource, Promise, PromiseVerification, PromiseComment, CountyProcurementActivity,
 )
+from .models.api_key import ApiKey
+
+admin.site.site_header = 'Angazia Kenya administration'
+admin.site.site_title = 'Angazia Kenya admin'
+admin.site.index_title = 'Promise Registry administration'
 
 @admin.register(PublicFeedback)
 class PublicFeedbackAdmin(admin.ModelAdmin):
@@ -128,3 +133,11 @@ class CountyProcurementActivityAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description='Award gap')
     def has_award_gap(self, obj):
         return obj.has_award_gap
+
+
+@admin.register(ApiKey)
+class ApiKeyAdmin(admin.ModelAdmin):
+    list_display = ('label', 'key', 'is_active', 'created_at', 'last_used_at')
+    list_filter = ('is_active',)
+    search_fields = ('label',)
+    readonly_fields = ('key', 'created_at', 'last_used_at')

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ county }} Brief &middot; KPPAS{% endblock %}
+{% block title %}{{ county_label }} Brief &middot; Angazia Kenya{% endblock %}
 
 {% block extra_style %}
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 20px; }
@@ -17,20 +17,32 @@
   .flagged-item:last-child { border-bottom: none; }
   .flagged-item .meta { color: var(--ink-secondary); font-size: 0.85rem; margin: 4px 0; }
   .generated-note { color: var(--ink-muted); font-size: 0.8rem; margin-top: 24px; }
+  .brief-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .print-button { background: none; border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; font: inherit; font-size: 0.85rem; color: var(--ink-secondary); cursor: pointer; }
+  .print-button:hover { border-color: var(--link); color: var(--link); }
+  .breakdown-row { display: flex; align-items: center; gap: 14px; }
+  .breakdown-row .score-bar { max-width: 320px; }
+  .breakdown-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.82rem; color: var(--ink-secondary); margin-top: 10px; }
+  .breakdown-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
 {% endblock %}
 
 {% block content %}
   <a class="back-link" href="{% url 'county_promises' county %}">&larr; Full promise list</a>
-  <h1>{{ county }} &mdash; Promise Registry Brief</h1>
-  <p class="subtitle">
-    A snapshot for sharing or reporting on, not the full record. Every figure here traces back
-    to a source document &mdash; see the full list for citations.
-  </p>
+  <div class="brief-header">
+    <div>
+      <h1>{{ county_label }} &mdash; Promise Registry Brief</h1>
+      <p class="subtitle">
+        A snapshot for sharing or reporting on, not the full record. Every figure here traces back
+        to a source document &mdash; see the full list for citations.
+      </p>
+    </div>
+    <button class="print-button no-print" onclick="window.print()">Print / save as PDF</button>
+  </div>
 
   {% if activity.has_award_gap %}
     <div class="card" style="background: var(--warning-bg); border-color: transparent;">
       <p style="margin:0; color: var(--warning-ink);">
-        &#9888; {{ county }} has published <strong>{{ activity.tenders_published }} tenders</strong> on PPRA this year, but
+        {% include "_icon_warning.html" %} {{ county }} has published <strong>{{ activity.tenders_published }} tenders</strong> on PPRA this year, but
         <strong>none have reached the award stage yet</strong> &mdash; that's why nothing shows up below.
         Worth asking why, not assuming there's nothing going on.
       </p>
@@ -60,6 +72,22 @@
     </a>
   </div>
 
+  {% if total %}
+    <div class="card">
+      <h2>Verification breakdown</h2>
+      <div class="breakdown-row">
+        {% include "_score_bar.html" with green=score_counts.green amber=score_counts.amber red=score_counts.red unverified=unverified_count total=total %}
+        <span class="subtitle" style="margin:0; white-space:nowrap;">{{ verified_count }} of {{ total }} verified</span>
+      </div>
+      <div class="breakdown-legend">
+        <span><span class="dot" style="background: var(--good);"></span>{{ score_counts.green|default:0 }} green</span>
+        <span><span class="dot" style="background: var(--warning);"></span>{{ score_counts.amber|default:0 }} amber</span>
+        <span><span class="dot" style="background: var(--critical);"></span>{{ score_counts.red|default:0 }} red</span>
+        <span><span class="dot" style="background: var(--border);"></span>{{ unverified_count }} not yet verified</span>
+      </div>
+    </div>
+  {% endif %}
+
   <div class="card">
     <h2>Flagged for attention</h2>
     {% if flagged %}
@@ -84,15 +112,18 @@
         </div>
       {% endfor %}
     {% else %}
-      <p>
-        {% if total == 0 %}
-          Nothing logged for {{ county }} yet &mdash; no awarded contracts on record, so there's nothing to flag or clear.
-          {% if activity.tenders_published %}That doesn't mean no activity: see the note above.{% endif %}
-        {% else %}
-          Nothing currently flagged red or broken for {{ county }}.
-          {% if verified_count == 0 %}That's because nothing here has been verified yet, not because everything's on track &mdash; see the full list.{% endif %}
-        {% endif %}
-      </p>
+      <div class="empty-state">
+        {% if total == 0 %}{% include "_icon_empty.html" %}{% endif %}
+        <p>
+          {% if total == 0 %}
+            Nothing logged for {{ county_label }} yet &mdash; no awarded contracts on record, so there's nothing to flag or clear.
+            {% if activity.tenders_published %}That doesn't mean no activity: see the note above.{% endif %}
+          {% else %}
+            Nothing currently flagged red or broken for {{ county_label }}.
+            {% if verified_count == 0 %}That's because nothing here has been verified yet, not because everything's on track &mdash; see the full list.{% endif %}
+          {% endif %}
+        </p>
+      </div>
     {% endif %}
   </div>
 

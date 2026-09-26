@@ -1,4 +1,4 @@
-# KPPAS Backend
+# Angazia Kenya
 
 This project uses Django, Airflow, and PostgreSQL for the backend. ETL scripts are in the etl/ folder.
 

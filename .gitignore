@@ -14,6 +14,7 @@ ENV/
 *.log
 db.sqlite3
 /static/
+/staticfiles/
 /media/
 
 # VS Code
@@ -22,6 +23,7 @@ db.sqlite3
 # Environment variables
 .env
 .env.*
+!.env.example
 
 # Jupyter Notebooks
 .ipynb_checkpoints/

@@ -12,8 +12,8 @@ import procurement_etl
 
 class Command(BaseCommand):
     help = (
-        'Fetch county government contract awards from PPRA/PPIP (via the OCP OCDS '
-        'data registry) and log each as a Promise Registry entry.'
+        'Fetch county and national government contract awards from PPRA/PPIP (via the '
+        'OCP OCDS data registry) and log each as a Promise Registry entry.'
     )
 
     def add_arguments(self, parser):
@@ -21,6 +21,10 @@ class Command(BaseCommand):
         parser.add_argument(
             '--all-counties', action='store_true',
             help='Fetch every county with awards this year, not just PILOT_COUNTIES.',
+        )
+        parser.add_argument(
+            '--skip-national', action='store_true',
+            help='Skip national government agencies (see procurement_etl for the tracked list).',
         )
 
     def handle(self, *args, **options):
@@ -45,12 +49,21 @@ class Command(BaseCommand):
                 f"Award gap flagged for {len(gaps)} county(s) (tenders published, nothing awarded yet): {', '.join(sorted(gaps))}"
             ))
 
-        if not awards:
-            self.stdout.write(self.style.WARNING('No county-government awards found.'))
+        national_awards = []
+        if not options['skip_national']:
+            self.stdout.write('Fetching national government agency awards...')
+            national_awards = procurement_etl.fetch_national_awards(year)
+            entities = sorted({a['entity'] for a in national_awards})
+            if entities:
+                self.stdout.write(f"National entities with awards: {', '.join(entities)}")
+
+        all_awards = awards + national_awards
+        if not all_awards:
+            self.stdout.write(self.style.WARNING('No awards found.'))
             return
 
         created, updated, skipped = 0, 0, 0
-        for a in awards:
+        for a in all_awards:
             if not a['ocid'] or not a['award_id'] or not a['date_made']:
                 skipped += 1
                 continue
@@ -95,5 +108,6 @@ class Command(BaseCommand):
             updated += bool(existing)
 
         self.stdout.write(self.style.SUCCESS(
-            f'Procurement promises for {year}: {created} created, {updated} updated, {skipped} skipped (missing id).'
+            f'Procurement promises for {year}: {created} created, {updated} updated, {skipped} skipped (missing id). '
+            f'({len(national_awards)} from national entities.)'
         ))

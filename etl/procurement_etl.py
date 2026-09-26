@@ -8,7 +8,7 @@
 # We treat each award as a government *commitment* worth logging in the
 # Promise Registry: money has been contractually committed to deliver
 # something, by a named county buyer, on a stated timeline. This script
-# only performs Step 1 (collection) of the KPPAS promise-tracking
+# only performs Step 1 (collection) of the Angazia Kenya promise-tracking
 # methodology -- it never marks a promise 'delivered' or 'broken', since
 # an award record is evidence a commitment was *made*, not evidence it
 # was *kept*. That verification is a separate, human, quarterly step.
@@ -37,6 +37,41 @@ def _extract_county(buyer_name):
     if not stripped.lower().endswith(_COUNTY_GOVERNMENT_SUFFIX):
         return None
     return stripped[:-len(_COUNTY_GOVERNMENT_SUFFIX)].strip()
+
+
+# "State Department ..." and "Ministry of ..." are self-describing prefixes
+# for national government the same way "County Government" is for counties
+# -- no maintenance needed as new ones start publishing awards. Everything
+# else nationally-scoped (constitutional offices, authorities, parastatals)
+# has no clean shared pattern, so those are a deliberately short, curated
+# allowlist rather than "everything that isn't a county" -- the raw buyer
+# list is full of things that aren't really "national government" in an
+# accountability sense (individual technical colleges, NG-CDFs, water
+# companies), and a blanket rule would bury the entities that matter in that
+# noise. Every string below is confirmed against live 2026 PPIP data, not
+# guessed -- the county-matching bug earlier (a silent case mismatch) is
+# exactly the failure mode careless string-matching produces here too.
+_NATIONAL_PREFIXES = ('state department', 'ministry of')
+_NATIONAL_ENTITY_ALLOWLIST = {
+    'the judiciary',
+    'kenya revenue authority',
+    'kenya rural roads authority',
+    'kenya urban roads authority',
+    'kenya power & lighting company',
+    'kenya medical supplies authority',
+    'office of the auditor general',
+    'agriculture and food authority',
+    'kenya petroleum refineries limited',
+    'kenya electricity  generating company',  # sic -- double space in the source data
+}
+
+
+def _extract_national_entity(buyer_name):
+    stripped = (buyer_name or '').strip()
+    lowered = stripped.lower()
+    if lowered.startswith(_NATIONAL_PREFIXES) or lowered in _NATIONAL_ENTITY_ALLOWLIST:
+        return stripped
+    return None
 
 CATEGORY_KEYWORDS = [
     ('Water', ['water', 'borehole', 'sewerage', 'sanitation', 'dam ']),
@@ -71,7 +106,12 @@ def _parse_date(value):
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value).date()
+        # Python's fromisoformat() only accepts a trailing 'Z' (vs. an
+        # explicit +00:00 offset) from 3.11 onward; OCDS timestamps commonly
+        # use 'Z', so without this a same-shaped date could silently parse on
+        # one Python version and silently return None -- and get skipped
+        # entirely -- on another.
+        return datetime.fromisoformat(value.replace('Z', '+00:00')).date()
     except ValueError:
         return None
 
@@ -109,6 +149,39 @@ def fetch_county_activity(year, counties=None):
     return activity
 
 
+def _normalize_awards(release):
+    """Yield one normalized dict per award in this release (county left
+    unset -- callers fill in '' for national or the extracted name)."""
+    tender = release.get('tender') or {}
+    release_date = _parse_date(release.get('date'))
+    buyer_name = (release.get('buyer') or {}).get('name', '').strip()
+    # contracts[] carries dateSigned -- the actual day the commitment was
+    # made -- keyed to its award via awardID; fall back to the release date.
+    signed_by_award = {
+        c.get('awardID'): _parse_date(c.get('dateSigned'))
+        for c in (release.get('contracts') or [])
+    }
+
+    for award in release.get('awards') or []:
+        value = award.get('value') or {}
+        suppliers = award.get('suppliers') or []
+        contract_period = award.get('contractPeriod') or {}
+
+        yield {
+            'ocid': release.get('ocid'),
+            'award_id': award.get('id'),
+            'title': award.get('title') or tender.get('title') or '(untitled award)',
+            'buyer_name': buyer_name,
+            'amount': value.get('amount'),
+            'currency': value.get('currency'),
+            'supplier_name': suppliers[0].get('name') if suppliers else None,
+            'contract_start': _parse_date(contract_period.get('startDate')),
+            'contract_end': _parse_date(contract_period.get('endDate')),
+            'date_made': signed_by_award.get(award.get('id')) or release_date,
+            'category': _guess_category(award.get('title') or tender.get('title'), tender.get('mainProcurementCategory')),
+        }
+
+
 def fetch_county_awards(year, counties=None):
     """Return a list of normalized award dicts for county-government buyers.
 
@@ -130,34 +203,30 @@ def fetch_county_awards(year, counties=None):
         if wanted is not None and county.lower() not in wanted:
             continue
 
-        tender = release.get('tender') or {}
-        release_date = _parse_date(release.get('date'))
-        # contracts[] carries dateSigned -- the actual day the county committed --
-        # keyed to its award via awardID; fall back to the release date if absent.
-        signed_by_award = {
-            c.get('awardID'): _parse_date(c.get('dateSigned'))
-            for c in (release.get('contracts') or [])
-        }
+        for award in _normalize_awards(release):
+            award['county'] = county
+            results.append(award)
 
-        for award in release.get('awards') or []:
-            value = award.get('value') or {}
-            suppliers = award.get('suppliers') or []
-            contract_period = award.get('contractPeriod') or {}
+    return results
 
-            results.append({
-                'ocid': release.get('ocid'),
-                'award_id': award.get('id'),
-                'title': award.get('title') or tender.get('title') or '(untitled award)',
-                'county': county,
-                'buyer_name': buyer_name,
-                'amount': value.get('amount'),
-                'currency': value.get('currency'),
-                'supplier_name': suppliers[0].get('name') if suppliers else None,
-                'contract_start': _parse_date(contract_period.get('startDate')),
-                'contract_end': _parse_date(contract_period.get('endDate')),
-                'date_made': signed_by_award.get(award.get('id')) or release_date,
-                'category': _guess_category(award.get('title') or tender.get('title'), tender.get('mainProcurementCategory')),
-            })
+
+def fetch_national_awards(year):
+    """Return normalized award dicts for national government buyers (see
+    _NATIONAL_PREFIXES / _NATIONAL_ENTITY_ALLOWLIST above). Each dict has
+    'county': '' -- matching Promise.county's own "blank means national"
+    convention -- and an added 'entity' field naming the actual ministry/
+    agency, since 'national' alone doesn't say who made the commitment."""
+    results = []
+    for release in fetch_releases(year):
+        buyer_name = (release.get('buyer') or {}).get('name', '').strip()
+        entity = _extract_national_entity(buyer_name)
+        if entity is None:
+            continue
+
+        for award in _normalize_awards(release):
+            award['county'] = ''
+            award['entity'] = entity
+            results.append(award)
 
     return results
 

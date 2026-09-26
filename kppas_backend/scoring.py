@@ -11,7 +11,13 @@ def aggregate_promise_scores(category_scores):
     for category, score in category_scores:
         bucket = buckets.setdefault(category, {'green': 0, 'amber': 0, 'red': 0, 'unverified': 0})
         bucket[score if score else 'unverified'] += 1
-    return [{'category': category, **counts} for category, counts in sorted(buckets.items())]
+    rows = []
+    for category, counts in sorted(buckets.items()):
+        # 'total' lets templates render a green/amber/red/unverified bar via
+        # {% widthratio %} without doing arithmetic in the template layer.
+        counts['total'] = counts['green'] + counts['amber'] + counts['red'] + counts['unverified']
+        rows.append({'category': category, **counts})
+    return rows
 
 
 def infer_status_from_verification(score, stated_deadline):

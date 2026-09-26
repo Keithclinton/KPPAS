@@ -53,6 +53,19 @@ def feedback_view(request):
     return render(request, 'feedback_form.html', context)
 
 
+def _county_label(county):
+    return 'National Government' if county == 'national' else county
+
+
+def _county_db_value(county):
+    """URLs use the literal string 'national' for national-government pages
+    (readable, and reuses every county-scoped view/template as-is); the
+    database uses '' for the same thing, matching Promise.county's own
+    "blank means national" convention. Translate at the view boundary so
+    nothing downstream needs to know both spellings exist."""
+    return '' if county == 'national' else county
+
+
 def _resolve_period(request, periods):
     if not periods:
         return None, None
@@ -76,8 +89,7 @@ def promise_registry_view(request):
     promise_stats = {
         row['county']: row
         for row in (
-            Promise.objects.exclude(county='')
-            .values('county')
+            Promise.objects.values('county')
             .annotate(
                 count=Count('id'),
                 delivered=Count('id', filter=Q(status='delivered')),
@@ -85,6 +97,7 @@ def promise_registry_view(request):
             )
         )
     }
+    national_stats = promise_stats.pop('', None)
     # A county can be active on PPRA (publishing tenders) with nothing
     # awarded yet, so it'd have zero promises and be invisible above --
     # folding in CountyProcurementActivity surfaces it anyway, flagged,
@@ -107,11 +120,25 @@ def promise_registry_view(request):
     # West Pokot's 335 promises at the same visual weight as Kisumu's 1.
     counties.sort(key=lambda row: (-row['count'], row['county']))
 
+    national_row = None
+    if national_stats:
+        national_row = {
+            'county': 'national',
+            'label': 'National government',
+            'count': national_stats['count'],
+            'delivered': national_stats['delivered'],
+            'broken': national_stats['broken'],
+        }
+
+    total_promises = sum(row['count'] for row in counties) + (national_stats['count'] if national_stats else 0)
+
     return render(request, 'promise_registry.html', {
         'counties': counties,
+        'national_row': national_row,
         'counties_with_promises': sum(1 for row in counties if row['count'] > 0),
         'counties_with_gap': sum(1 for row in counties if row['has_award_gap']),
         'total_counties': len(counties),
+        'total_promises': total_promises,
     })
 
 
@@ -126,8 +153,9 @@ def _attach_latest_verification(promises):
 
 
 def county_promises_view(request, county):
+    county_value = _county_db_value(county)
     all_promises = _attach_latest_verification(list(
-        Promise.objects.filter(county=county)
+        Promise.objects.filter(county=county_value)
         .select_related('source')
         .prefetch_related('verifications')
         .annotate(comment_count=Count('comments', filter=Q(comments__is_hidden=False)))
@@ -141,7 +169,7 @@ def county_promises_view(request, county):
     promises = [p for p in all_promises if p.status == status_filter] if status_filter else all_promises
 
     periods = list(
-        PromiseVerification.objects.filter(promise__county=county)
+        PromiseVerification.objects.filter(promise__county=county_value)
         .order_by('-year', '-quarter')
         .values_list('year', 'quarter')
         .distinct()
@@ -158,6 +186,7 @@ def county_promises_view(request, county):
 
     return render(request, 'county_promises.html', {
         'county': county,
+        'county_label': _county_label(county),
         'promises': promises,
         'status_filter': status_filter,
         'rollup': rollup,
@@ -182,7 +211,7 @@ def _build_comment_tree(promise):
 def promise_detail_view(request, county, promise_id):
     promise = get_object_or_404(
         Promise.objects.select_related('source').prefetch_related('verifications'),
-        pk=promise_id, county=county,
+        pk=promise_id, county=_county_db_value(county),
     )
 
     if request.method == 'POST':
@@ -203,6 +232,7 @@ def promise_detail_view(request, county, promise_id):
 
     return render(request, 'promise_detail.html', {
         'county': county,
+        'county_label': _county_label(county),
         'promise': promise,
         'verifications': list(promise.verifications.all()),
         'top_comments': _build_comment_tree(promise),
@@ -217,8 +247,9 @@ def county_brief_view(request, county):
     journalist or CSO rather than requiring them to dig through the full
     table. This is a live current-state snapshot (latest status per promise),
     not scoped to one quarter, so there's nothing to pick before it's useful."""
+    county_value = _county_db_value(county)
     promises = _attach_latest_verification(list(
-        Promise.objects.filter(county=county)
+        Promise.objects.filter(county=county_value)
         .select_related('source')
         .prefetch_related('verifications')
     ))
@@ -226,18 +257,24 @@ def county_brief_view(request, county):
     status_counts = Counter(p.status for p in promises)
     score_counts = Counter(p.latest_verification.score for p in promises if p.latest_verification)
     verified_count = sum(score_counts.values())
+    unverified_count = len(promises) - verified_count
 
     flagged = sorted(
         (p for p in promises if p.status == 'broken' or (p.latest_verification and p.latest_verification.score == 'red')),
         key=lambda p: (p.stated_deadline is None, p.stated_deadline),
     )
 
-    activity = CountyProcurementActivity.objects.filter(county=county, year=datetime.now().year).first()
+    # National entities aren't tracked in CountyProcurementActivity yet (see
+    # procurement_etl.fetch_national_awards) -- this naturally resolves to
+    # None for county='national', which is correct: no gap data to show.
+    activity = CountyProcurementActivity.objects.filter(county=county_value, year=datetime.now().year).first()
 
     return render(request, 'county_brief.html', {
         'county': county,
+        'county_label': _county_label(county),
         'total': len(promises),
         'verified_count': verified_count,
+        'unverified_count': unverified_count,
         'status_counts': status_counts,
         'score_counts': score_counts,
         'flagged': flagged,
@@ -270,7 +307,7 @@ def _ussd_pick(options, raw_choice):
 def ussd_feedback_view(request):
     """
     Africa's Talking-shaped USSD webhook (SMS/USSD channel for citizens without
-    internet access, per the KPPAS community-level feedback design).
+    internet access, per the Angazia Kenya community-level feedback design).
 
     Stateless by design: Africa's Talking resends the full accumulated `text`
     (each step separated by '*') on every request, so the current step is
@@ -291,7 +328,7 @@ def ussd_feedback_view(request):
 
     if len(steps) == 0:
         menu = '\n'.join(f'{i + 1}. {c}' for i, c in enumerate(PILOT_COUNTIES))
-        return respond('CON', f'Welcome to KPPAS.\nWhich county?\n{menu}')
+        return respond('CON', f'Welcome to Angazia Kenya.\nWhich county?\n{menu}')
 
     county = _ussd_pick(PILOT_COUNTIES, steps[0])
     if county is None:
