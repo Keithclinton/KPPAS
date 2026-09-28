@@ -11,4 +11,9 @@ python manage.py migrate --noinput
 python manage.py collectstatic --noinput
 python manage.py bootstrap_admin
 
-exec gunicorn kppas_backend.wsgi --log-file -
+# Bare `gunicorn kppas_backend.wsgi` defaults to a single worker with no
+# request timeout -- one slow request (or the odd USSD webhook client that
+# hangs) would block every other visitor. 3 workers is a reasonable default
+# for a small single-instance deployment; WEB_CONCURRENCY overrides it if the
+# instance size changes later.
+exec gunicorn kppas_backend.wsgi --workers "${WEB_CONCURRENCY:-3}" --timeout 60 --log-file -

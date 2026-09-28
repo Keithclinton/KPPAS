@@ -15,6 +15,7 @@ import urllib.parse
 from pathlib import Path
 
 import dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -27,10 +28,21 @@ dotenv.load_dotenv(BASE_DIR / '.env')
 # SECURITY WARNING: keep the secret key used in production secret!
 # The fallback below is fine for local dev but must be overridden via
 # DJANGO_SECRET_KEY in any real deployment.
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure--^kkt2uajacl3qllix+y*g_%r_6)a6m3&+76(*mnw!s&vccp2_')
+_INSECURE_FALLBACK_KEY = 'django-insecure--^kkt2uajacl3qllix+y*g_%r_6)a6m3&+76(*mnw!s&vccp2_'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', _INSECURE_FALLBACK_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
+
+if not DEBUG and SECRET_KEY == _INSECURE_FALLBACK_KEY:
+    # This fallback key is sitting in plain text in this repo's git history --
+    # silently running a real deployment with it would be a live vulnerability,
+    # not just a lint warning. Fail loudly at boot instead of ever letting DEBUG=
+    # False serve a single request with a publicly-known secret key.
+    raise ImproperlyConfigured(
+        'DJANGO_SECRET_KEY must be set to a real value when DJANGO_DEBUG=False. '
+        'Generate one with: python -c "import secrets; print(secrets.token_urlsafe(50))"'
+    )
 
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if h.strip()]
 if DEBUG and not ALLOWED_HOSTS:
@@ -164,9 +176,9 @@ STORAGES = {
         'BACKEND': 'django.core.files.storage.FileSystemStorage',
     },
     # The manifest/hashed storage requires collectstatic to have already run
-    # (it reads a manifest file collectstatic writes) -- true in production
-    # after the Procfile's release phase runs, but not for local dev or the
-    # test suite, where it would make every {% static %} tag raise instead.
+    # (it reads a manifest file collectstatic writes) -- true in production,
+    # where start.sh runs it before gunicorn starts, but not for local dev or
+    # the test suite, where it would make every {% static %} tag raise instead.
     'staticfiles': {
         'BACKEND': (
             'whitenoise.storage.CompressedManifestStaticFilesStorage' if not DEBUG
