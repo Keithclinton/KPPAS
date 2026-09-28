@@ -1,0 +1,7 @@
+# Force LF regardless of the committing machine's core.autocrlf setting --
+# a shell script checked out with CRLF line endings fails immediately on
+# Linux (bad interpreter: the shebang line's trailing \r breaks it), which
+# matters here since start.sh is what actually boots the deployed container.
+*.sh text eol=lf
+*.py text eol=lf
+Procfile text eol=lf
